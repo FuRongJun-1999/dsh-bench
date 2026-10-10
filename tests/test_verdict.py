@@ -309,11 +309,125 @@ def t35():
 
 @test("t36_depth_not_ranked_fast_test")
 def t36():
-    d = V.decide((12, 16), depth=V.DEPTH_FAST)
-    check(not d.rank_eligible, "体验快测不进能力榜")
-    check(d.capability_state == V.STATE_USEFUL, "快测不得改写能力状态本身")
+    """档位能说什么（方案 §8 / 手册 §6）。
+
+    更迭理由（本条曾锁住要改的行为）：旧断言是
+    `check(d.capability_state == V.STATE_USEFUL, "快测不得改写能力状态本身")`，
+    它断言「快测档下 capability_state 仍为『真有用』」——而那个『真有用』正是
+    方案 §8 明文禁止的「快测给出能力 Δ 结论」（原话：「体验快测不测能力 Δ，
+    不用『认证通过』『合格』」）。因此旧断言是为缺陷写的守卫，必须改向。
+
+    原始意图（「快测不得凭空造出一个能力结论」）保留，换成正向钉法：
+    快测档 ⇒ label_kind 不取 five_state、状态不落在五状态里、无徽章、不进榜；
+    并留一条对照：同区间在标准测评档仍是五状态（防「把所有档都退化成快测」）。
+    """
+    fast = V.decide((12, 16), depth=V.DEPTH_FAST)
+    check(fast.label_kind != V.LK_FIVE_STATE, "快测档 label_kind 不得为 five_state")
+    check(fast.label_kind == V.LK_QUICK_CHECK, "快测档应为快测记录类：%r" % fast.label_kind)
+    check(
+        fast.capability_state not in V.FIVE_STATES,
+        "快测档不得凭空造出能力结论，实得 %r" % fast.capability_state,
+    )
+    check(
+        fast.capability_state == V.STATE_CAPABILITY_TRIAL,
+        "快测档应为「能力试跑（观察结果，不进榜）」，实得 %r" % fast.capability_state,
+    )
+    check(not fast.capability_delta_concluded, "快测档不得产出能力 Δ 结论")
+    check(fast.badges == [], "快测档不得签发徽章")
+    check(not fast.rank_eligible, "体验快测不进能力榜")
+    check(not fast.worth_trying, "快测档不进「值得试」入口")
+    check(fast.interval is None, "快测档不得产出能力区间（interval 须为 None）")
+
+    # 对照短测的观察值另放 observed_interval，照实展示但不冒充能力结论
+    obs = V.decide((6, 10), depth=V.DEPTH_FAST)
+    check(obs.observed_interval == (6.0, 10.0), "观察值须照实登记：%r" % (obs.observed_interval,))
+    check(obs.interval is None, "观察值不得塞进 interval 冒充能力区间")
+    check(any("观察结果" in n for n in obs.notes), "观察值须注明是观察结果：%r" % obs.notes)
+
+    # 对照：同区间在标准测评档仍是五状态（防「把所有档都退化成快测」）
     s = V.decide((12, 16), depth=V.DEPTH_STANDARD)
+    check(s.label_kind == V.LK_FIVE_STATE, "标准测评须出五状态：%r" % s.label_kind)
+    check(s.capability_state == V.STATE_USEFUL, "标准测评档同区间应判真有用")
     check(s.rank_eligible, "标准测评达门槛后进榜")
+    check(s.badges, "标准测评达门槛后应签发徽章")
+
+    # 非排名档（如作者自测）：即使算出五状态，也不进能力榜
+    other = V.decide((12, 16), depth="作者自测")
+    check(not other.rank_eligible, "非排名档不进能力榜")
+
+
+# --------------------------------------------------------------- 方案 §8 / §4.1 / §9
+
+@test("t37_quick_check_record_and_banned_wording")
+def t37():
+    """手册 §6：快测只描述检查结果，禁用「通过」「合格」这类词。"""
+    d = V.decide(
+        (6, 10),
+        depth=V.DEPTH_FAST,
+        quick_check={"安装": "成功", "功能点": "5 个功能点 4 个可用"},
+    )
+    joined = "；".join(d.notes)
+    check("快测记录" in joined, "须给出快测记录：%r" % d.notes)
+    check("5 个功能点 4 个可用" in joined, "须逐项列出查到什么：%r" % d.notes)
+    check(
+        V.banned_quick_check_wording("安装通过") == ["通过"],
+        "结论位的裸「通过」须被判为禁用词",
+    )
+    check("合格" in V.banned_quick_check_wording("快测合格"), "「合格」须被判为禁用词")
+    check(
+        V.banned_quick_check_wording("通过检查发现了问题") == [],
+        "普通行文里的「通过检查」是描述过程，不该误伤",
+    )
+    check("已检查" in V.sanitize_quick_check_text("安装通过"), "禁用词须被换成描述性表述")
+
+
+@test("t38_quick_check_untested_not_blank")
+def t38():
+    """未测就写「未测」，不留空（方案 §16）。"""
+    d = V.decide((6, 10), depth=V.DEPTH_FAST)
+    check(any("未测" in n for n in d.notes), "无快测项时须写「未测」：%r" % d.notes)
+    check(d.cards[V.CARD_CAPABILITY]["display"].startswith("未测"), "能力栏须写未测")
+
+
+@test("t39_security_scope_by_depth")
+def t39():
+    """方案 §8：深度审计 = 标准测评 + 六类安全专项；标准测评标不适用，不留空。"""
+    std = V.decide((6, 10))
+    check(not std.security_scope["applicable"], "标准测评不含六类安全专项")
+    check("不适用" in std.security_scope["display"], "标准测评须标不适用：%r" % std.security_scope)
+    aud = V.decide((6, 10), depth=V.DEPTH_AUDIT, security_six_threats={"提示注入": "未发现问题"})
+    check(aud.security_scope["applicable"], "深度审计须出安全专项")
+    check(
+        set(aud.security_scope["threats"].keys()) == set(V.SECURITY_SIX_THREATS),
+        "安全专项须覆盖六类威胁：%r" % aud.security_scope["threats"],
+    )
+    check("提示注入" not in aud.security_scope["untested"], "已给的项不算未测")
+    check(len(aud.security_scope["untested"]) == 5, "其余五项须标未测：%r" % aud.security_scope["untested"])
+    # 能力结论同规（方案 §8：深度审计＝标准＋安全专项，能力结论可以相同）
+    check(aud.capability_state == std.capability_state, "深度审计的能力结论与标准测评同规")
+
+
+@test("t40_cards_separate_and_tool_four_things")
+def t40():
+    """方案 §9 三张单分开、第三张里钱与安全分栏；方案 §4.1 工具型四件事分开看。"""
+    d = V.decide(
+        (12, 16),
+        tool_results={"干对没有": "做成 3 件中的 3 件"},
+        risk_level="中",
+    )
+    for name in (V.CARD_CAPABILITY, V.CARD_USABILITY, V.CARD_COST_AND_SAFETY):
+        check(name in d.cards, "缺第 %r 张单" % name)
+    third = d.cards[V.CARD_COST_AND_SAFETY]
+    check("cost" in third and "safety" in third, "第三张单里钱与安全须分栏：%r" % third)
+    check(set(d.tool_four_things.keys()) == set(V.FOUR_THINGS), "工具型四件事须齐全")
+    check(d.tool_four_things["干对没有"] == "做成 3 件中的 3 件", "已给的项须照实记")
+    check(d.tool_four_things["有没有乱来"] == "未测", "缺项写未测，不留空")
+    # 完全没给工具结果时，四件事也须齐全且全为「未测」（不留空）
+    bare = V.decide((12, 16)).tool_four_things
+    check(set(bare.keys()) == set(V.FOUR_THINGS), "未给工具结果时四件事仍须齐全")
+    check(all(v == "未测" for v in bare.values()), "未给工具结果时四件事全为未测：%r" % bare)
+    check(d.risk_level == "中", "已查清的风险等级须照实记")
+    check(V.decide((12, 16)).risk_level == "未评估", "未查清就写「未评估」，不硬给等级")
 
 
 # --------------------------------------------------------------- 变异清单
@@ -429,8 +543,8 @@ MUTATIONS = [
      "expect": ["t20_invalid_run_no_capability_state", "t21_invalid_run_is_not_evidence_insufficient"],
      "rule": "§7 实验无效≠证据不足"},
     {"id": "V21", "target": "scripts/verdict.py", "test_file": "tests/test_verdict.py",
-     "anchor": "            label_kind=\"invalid_run\",",
-     "replace": "            label_kind=\"refused\",",
+     "anchor": "            label_kind=LK_INVALID_RUN,",
+     "replace": "            label_kind=LK_REFUSED,",
      "count": 1, "expect": ["t21_invalid_run_is_not_evidence_insufficient"],
      "rule": "§7 实验无效与证据不足的分类标识"},
     {"id": "V22", "target": "scripts/verdict.py", "test_file": "tests/test_verdict.py",
@@ -496,7 +610,55 @@ MUTATIONS = [
     {"id": "V36", "target": "scripts/verdict.py", "test_file": "tests/test_verdict.py",
      "anchor": "        and depth in RANKING_DEPTHS\n    )",
      "replace": "    )",
-     "count": 1, "expect": ["t36_depth_not_ranked_fast_test"], "rule": "方案 §8 体验快测不进能力榜"},
+     "count": 1, "expect": ["t36_depth_not_ranked_fast_test"], "rule": "方案 §8 非排名档不进能力榜"},
+    {"id": "V37", "target": "scripts/verdict.py", "test_file": "tests/test_verdict.py",
+     "anchor": "            label_kind=LK_QUICK_CHECK,",
+     "replace": "            label_kind=LK_FIVE_STATE,",
+     "count": 1, "expect": ["t36_depth_not_ranked_fast_test"],
+     "rule": "方案 §8 快测档 label_kind 不得为 five_state（快测不出能力 Δ 结论）"},
+    {"id": "V38", "target": "scripts/verdict.py", "test_file": "tests/test_verdict.py",
+     "anchor": "    if depth == DEPTH_FAST:\n        record_lines, banned = quick_check_record(quick_check)",
+     "replace": "    if False:\n        record_lines, banned = quick_check_record(quick_check)",
+     "count": 1,
+     "expect": ["t36_depth_not_ranked_fast_test",
+                "t37_quick_check_record_and_banned_wording",
+                "t38_quick_check_untested_not_blank"],
+     "rule": "方案 §8 快测档须走快测分支（不得落到五状态）"},
+    {"id": "V39", "target": "scripts/verdict.py", "test_file": "tests/test_verdict.py",
+     "anchor": "    hits = [w for w in words if w in text]",
+     "replace": "    hits = []",
+     "count": 1, "expect": ["t37_quick_check_record_and_banned_wording"],
+     "rule": "手册 §6 快测禁用词检查"},
+    {"id": "V40", "target": "scripts/verdict.py", "test_file": "tests/test_verdict.py",
+     "anchor": "    if not items:\n        return [\"快测记录：未测（没有可展示的检查项）\"], []",
+     "replace": "    if not items:\n        return [], []",
+     "count": 1, "expect": ["t38_quick_check_untested_not_blank"],
+     "rule": "方案 §16 未测就写「未测」，不留空"},
+    {"id": "V41", "target": "scripts/verdict.py", "test_file": "tests/test_verdict.py",
+     "anchor": "    if depth != DEPTH_AUDIT:",
+     "replace": "    if False:",
+     "count": 1, "expect": ["t39_security_scope_by_depth"],
+     "rule": "方案 §8 标准测评不含六类安全专项（须标不适用）"},
+    {"id": "V42", "target": "scripts/verdict.py", "test_file": "tests/test_verdict.py",
+     "anchor": "        detail[name] = given.get(name) or \"未测\"",
+     "replace": "        detail[name] = given.get(name, \"已通过\")",
+     "count": 1, "expect": ["t39_security_scope_by_depth"],
+     "rule": "手册 §4 未测（没考）≠ 已验证通过（考了有通过证据）"},
+    {"id": "V43", "target": "scripts/verdict.py", "test_file": "tests/test_verdict.py",
+     "anchor": "    four_things = {k: \"未测\" for k in FOUR_THINGS}",
+     "replace": "    four_things = {k: \"\" for k in FOUR_THINGS}",
+     "count": 1, "expect": ["t40_cards_separate_and_tool_four_things"],
+     "rule": "方案 §4.1 工具型四件事缺项写未测（不留空）"},
+    {"id": "V44", "target": "scripts/verdict.py", "test_file": "tests/test_verdict.py",
+     "anchor": "            four_things[k] = tool_results.get(k, \"未测\")",
+     "replace": "            four_things[k] = tool_results.get(k, \"\")",
+     "count": 1, "expect": ["t40_cards_separate_and_tool_four_things"],
+     "rule": "方案 §4.1 工具型四件事部分缺项也写未测"},
+    {"id": "V45", "target": "scripts/verdict.py", "test_file": "tests/test_verdict.py",
+     "anchor": "            interval=None,\n            observed_interval=observed,",
+     "replace": "            interval=observed,\n            observed_interval=observed,",
+     "count": 1, "expect": ["t36_depth_not_ranked_fast_test"],
+     "rule": "方案 §8 快测档不得产出能力区间（观察值不得冒充能力区间）"},
 ]
 
 

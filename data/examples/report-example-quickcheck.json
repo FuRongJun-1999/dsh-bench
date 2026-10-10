@@ -1,0 +1,125 @@
+{
+  "schema_version": "1.0.0",
+  "report_id": "example-report-quickcheck-001",
+  "report_version": 1,
+  "report_status": "方法试验",
+  "is_example": true,
+  "plugin_id": "example-memory-plugin",
+  "domain": "记忆",
+  "depth": "体验快测",
+  "experiment_id": "exp-example-005",
+  "analysis_id": "ana-example-005",
+  "protocol_hash": "8dd51cbf75b259c5dabfdb928eb112364231b5d8f9f580759534e5d78a34d849",
+  "taskset_hash": "98789523c6a11728f3e1d0da79d9b771501c08ba4947938760beb2a3abefcba7",
+  "scorer_hash": "a669236b5f4b3b5414baff920f78411fdf303b0c286a1dbfa1e1a05b57f41507",
+  "environment_id": "env-example-005",
+  "plugin_identity": {
+    "form": "源码版",
+    "ref": "example/example-memory-plugin@0.0.0-example",
+    "observable": true
+  },
+  "interval": null,
+  "a": 5,
+  "b": 5,
+  "max_half_width": 5,
+  "half_width": 2,
+  "capability_state": "能力试跑（观察结果，不进榜）",
+  "label_kind": "quick_check",
+  "capability_delta_concluded": false,
+  "precision_ok": false,
+  "scenario_count": 1,
+  "rerun_count": 2,
+  "b0_score": null,
+  "p_score": null,
+  "delta": null,
+  "install_status": "安装成功",
+  "security": {
+    "status": "未测",
+    "events": []
+  },
+  "cost": {
+    "total_cost": 2.0,
+    "success_count": 0,
+    "baseline_cost": 0.0,
+    "baseline_success_count": 0,
+    "unit_success_cost": "不适用：没有成功任务",
+    "incremental_unit_success_cost": "不适用：没有多干成任务",
+    "notes": "示例：快测不测能力 Δ，因此没有成功任务数；禁止除零，仍展示实际花费。"
+  },
+  "evidence": {
+    "evidence_id": "ev-example-005",
+    "hashes": [
+      "sha256:98789523c6a11728f3e1d0da79d9b771501c08ba4947938760beb2a3abefcba7"
+    ],
+    "public_redacted": true,
+    "original_deleted": false,
+    "redacted_evidence_sufficient": true
+  },
+  "review": {
+    "executor": "执行者甲",
+    "independent_reviewer": "复核者乙",
+    "independent": true,
+    "reviewed_at": "2026-10-06"
+  },
+  "disclosure": "无利益关系（示例）。",
+  "tested_at": "2026-10-05",
+  "expires_at": "2027-01-03",
+  "comparability": {
+    "model": "example-model-v1",
+    "host": "example-host-1.0",
+    "taskset": "example-taskset-v0",
+    "budget_policy": "example-budget-v0"
+  },
+  "cards": {
+    "能力": {
+      "value": null,
+      "display": "未测（快测不测能力 Δ）"
+    },
+    "好不好用": {
+      "value": null,
+      "display": "快测记录：安装：成功；功能点：5 个功能点 4 个可用"
+    },
+    "花费与安全": {
+      "cost": {
+        "value": "不适用：没有成功任务",
+        "display": "见 cost 栏"
+      },
+      "safety": {
+        "value": "未测",
+        "display": "能力与安全分栏，不算总分"
+      }
+    }
+  },
+  "tool_four_things": {
+    "干对没有": "未测",
+    "有没有乱来": "未测",
+    "花得多不多": "未测",
+    "出错能不能接着干": "未测"
+  },
+  "security_scope": {
+    "applicable": false,
+    "display": "不适用：体验快测 不含六类安全专项（要做专项请走深度审计）",
+    "threats": {}
+  },
+  "risk_level": "未评估",
+  "corrections": [],
+  "invalidation": {
+    "status": "有效"
+  },
+  "human_text": {
+    "结论": "快测记录：安装成功，5 个功能点 4 个可用；还有这些没查（示例数据，不是正式成绩）。",
+    "适合谁": "未测（快测不给适合谁的结论）。",
+    "不适合谁": "未测。",
+    "这次做了什么": "示例：装一遍、点了几个功能点、看卸载残留；没做装与不装对照。",
+    "装与不装差多少": "快测不测能力 Δ，所以不报差值。",
+    "花了多少钱多久": "示例：一共 2 元。",
+    "最需要注意的坑": "快测不写「认证」一类的结论词，只描述检查结果；快测失败不影响后续申请标准测评。",
+    "查了什么没查什么": "示例：查了安装与功能点；没查能力、没查安全六威胁。",
+    "哪个版本哪天测的": "示例版本 0.0.0-example，2026-10-05 测。",
+    "利益关系和复核": "无利益关系；复核者乙独立复核。"
+  },
+  "observed_interval": {
+    "L": 6,
+    "U": 10
+  }
+}

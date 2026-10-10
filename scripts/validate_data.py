@@ -234,6 +234,63 @@ def semantic_report(report: dict, verdict) -> list:
     # 7) 隐私：原件未删除时必须登记脱敏状态
     if not ev.get("public_redacted") and not ev.get("original_deleted"):
         errors.append("隐私：公开报告须脱敏（public_redacted 为假）")
+
+    # 8) 档位能说什么（方案 §8 / 手册 §6）：快测不得产出五状态能力结论
+    depth = report.get("depth")
+    declared_state = report.get("capability_state")
+    declared_kind = report.get("label_kind")
+    cards = report.get("cards") or {}
+    if depth == verdict.DEPTH_FAST:
+        if declared_state in verdict.CAPABILITY_DELTA_STATES:
+            errors.append(
+                "档位越界：体验快测不得产出能力 Δ 结论（方案 §8「体验快测不测能力 Δ」），"
+                "实为 %r；应为 %r" % (declared_state, verdict.STATE_CAPABILITY_TRIAL)
+            )
+        if declared_kind == verdict.LK_FIVE_STATE:
+            errors.append(
+                "档位越界：体验快测的 label_kind 不得为 five_state（应为 quick_check 或过程态）"
+            )
+        if report.get("capability_delta_concluded"):
+            errors.append("档位越界：体验快测 capability_delta_concluded 必须为假")
+        if report.get("rank_eligible"):
+            errors.append("档位越界：体验快测不进能力榜（方案 §8）")
+        for field, line in (report.get("human_text") or {}).items():
+            banned = verdict.banned_quick_check_wording(str(line), strict=(field == "结论"))
+            if banned:
+                errors.append(
+                    "快测禁用词：%s 含 %s（手册 §6 禁用「通过」「合格」这类词）"
+                    % (field, "、".join(banned))
+                )
+        for field, line in (cards.get(verdict.CARD_USABILITY) or {}).items():
+            banned = verdict.banned_quick_check_wording(str(line), strict=True)
+            if banned:
+                errors.append("快测禁用词：好不好用.%s 含 %s（手册 §6）" % (field, "、".join(banned)))
+    elif depth in verdict.RANKING_DEPTHS:
+        if declared_state in verdict.CAPABILITY_DELTA_STATES and declared_kind != verdict.LK_FIVE_STATE:
+            errors.append("label_kind 与结论不符：%r 应为 five_state" % declared_state)
+        if declared_state in verdict.CAPABILITY_DELTA_STATES and not report.get("capability_delta_concluded"):
+            errors.append("label_kind 与结论不符：标准／深度档产出五状态时 capability_delta_concluded 应为真")
+
+    # 9) 三张单必须分开且第三张内钱与安全分栏（方案 §9）
+    cards = report.get("cards") or {}
+    for name in (verdict.CARD_CAPABILITY, verdict.CARD_USABILITY, verdict.CARD_COST_AND_SAFETY):
+        if name not in cards:
+            errors.append("三张单缺失：cards 缺 %r" % name)
+    third = cards.get(verdict.CARD_COST_AND_SAFETY) or {}
+    for sub in ("cost", "safety"):
+        if sub not in third:
+            errors.append("第三张单未分栏：花费与安全里缺 %r" % sub)
+
+    # 10) 风险等级：未查清不得硬给等级（方案 §9/§16）
+    if report.get("risk_level") not in ("低", "中", "高", "关键", "未评估"):
+        errors.append("风险等级取值非法：%r" % report.get("risk_level"))
+
+    # 11) 安全专项：深度审计须有六威胁面；标准测评须标不适用（方案 §8）
+    scope = report.get("security_scope") or {}
+    if depth == verdict.DEPTH_AUDIT and not scope.get("applicable"):
+        errors.append("安全专项缺失：深度审计须出六类安全专项（security_scope.applicable 为假）")
+    if depth == verdict.DEPTH_STANDARD and scope.get("applicable"):
+        errors.append("安全专项越界：标准测评不含六类安全专项，须标不适用")
     return errors
 
 

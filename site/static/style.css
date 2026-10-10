@@ -53,6 +53,10 @@ h3 { font-size: 1.05rem; }
 .verdict { background: #fff; border: 1px solid var(--line); border-radius: 10px; padding: 14px; }
 .verdict .state { font-size: 1.35rem; font-weight: 700; }
 .safety { background: #fdecea; border-left: 5px solid var(--danger); padding: 10px 14px; border-radius: 6px; margin: 14px 0; }
+.cards3 { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 12px; }
+.cards3 .card { margin: 0; }
+.cards3 h3 { margin: 0 0 6px; }
+.cards3 p { margin: 4px 0; }
 .note { color: var(--muted); font-size: .92rem; }
 table { width: 100%; border-collapse: collapse; font-size: .95rem; }
 th, td { text-align: left; border-bottom: 1px solid var(--line); padding: 8px 6px; }

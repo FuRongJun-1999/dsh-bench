@@ -104,7 +104,11 @@ def main(argv=None) -> int:
         copy_repo(repo)
         for m in mutations:
             target = repo / m["target"]
-            text = target.read_text(encoding="utf-8")
+            # 用字节读写：Path.write_text 在 Windows 会把 \n 翻成 \r\n，
+            # 那样还原后文件哈希就变了，会把「后一条变异的读数」污染成
+            # 前一条的副作用（本仓踩过的坑：t68 真源哈希登记因此误红）。
+            raw = target.read_bytes()
+            text = raw.decode("utf-8")
             occurrences = text.count(m["anchor"])
             if occurrences != m["count"]:
                 results.append(
@@ -117,9 +121,20 @@ def main(argv=None) -> int:
                     }
                 )
                 continue
-            target.write_text(text.replace(m["anchor"], m["replace"]), encoding="utf-8")
+            target.write_bytes(text.replace(m["anchor"], m["replace"]).encode("utf-8"))
             failed = run_guard(repo, m["test_file"])
-            target.write_text(text, encoding="utf-8")   # 还原副本
+            target.write_bytes(raw)   # 逐字节还原副本
+            if target.read_bytes() != raw:
+                results.append(
+                    {
+                        "id": m["id"],
+                        "status": "BYTE_DRIFT",
+                        "detail": "还原后字节不一致（变异会污染后续读数）",
+                        "expect": m["expect"],
+                        "rule": m["rule"],
+                    }
+                )
+                continue
 
             if sorted(failed) == sorted(m["expect"]):
                 status = "OK"
@@ -145,7 +160,13 @@ def main(argv=None) -> int:
 
     ok = 0
     for r in results:
-        mark = {"OK": "OK    ", "NO_RED": "NO_RED", "MULTI_RED": "MULTI ", "ANCHOR_MISMATCH": "ANCHOR"}[r["status"]]
+        mark = {
+            "OK": "OK    ",
+            "NO_RED": "NO_RED",
+            "MULTI_RED": "MULTI ",
+            "ANCHOR_MISMATCH": "ANCHOR",
+            "BYTE_DRIFT": "DRIFT ",
+        }[r["status"]]
         print("%s %-6s %-34s %s" % (mark, r["id"], r["rule"], r["detail"]))
         if r["status"] != "OK":
             print("        - 期望红项：%s" % ", ".join(r["expect"]))

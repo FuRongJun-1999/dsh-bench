@@ -440,10 +440,47 @@ def build(out_dir: Path, data: dict) -> list:
         )
         notes = "".join("<li>%s</li>" % esc(n) for n in d.notes)
         scope = "<p>%s</p><ul>%s</ul>" % (esc((r.get("human_text") or {}).get("查了什么没查什么", "")), notes)
+
+        # 三张单分开（方案 §9）：能力 / 好不好用 / 花费与安全；第三张里钱与安全也分栏
+        cards_data = r.get("cards") or {}
+        cap_card = cards_data.get(V.CARD_CAPABILITY) or {}
+        use_card = cards_data.get(V.CARD_USABILITY) or {}
+        third_card = cards_data.get(V.CARD_COST_AND_SAFETY) or {}
+        cards_html = (
+            "<div class=\"cards3\">"
+            "<div class=\"card\"><h3>能力</h3><p>%s</p></div>"
+            "<div class=\"card\"><h3>好不好用</h3><p>%s</p></div>"
+            "<div class=\"card\"><h3>花费与安全</h3>"
+            "<p><strong>钱：</strong>%s</p><p><strong>安全：</strong>%s</p></div>"
+            "</div><p class=\"note\">三张单分开摆，不给总分；第三张里钱和安全也分栏。</p>"
+        ) % (
+            esc(cap_card.get("display", "未测")),
+            esc(use_card.get("display", "未测")),
+            esc((third_card.get("cost") or {}).get("display", "未测")),
+            esc((third_card.get("safety") or {}).get("display", "未测")),
+        )
+
+        # 工具型四件事（方案 §4.1）
+        four = r.get("tool_four_things") or {}
+        four_html = "<ul>" + "".join(
+            "<li>%s：%s</li>" % (esc(k), esc(four.get(k, "未测"))) for k in V.FOUR_THINGS
+        ) + "</ul>"
+
+        # 安全专项（方案 §8）：深度审计才有；标准测评标不适用
+        sc = r.get("security_scope") or {}
+        scope_sec = "<p>%s</p>" % esc(sc.get("display", "未测"))
+        if sc.get("applicable"):
+            scope_sec += "<ul>" + "".join(
+                "<li>%s：%s</li>" % (esc(k), esc(v)) for k, v in (sc.get("threats") or {}).items()
+            ) + "</ul>"
+            if sc.get("untested"):
+                scope_sec += "<p class=\"note\">未测项：%s（未测就写未测，不留空）。</p>" % esc("、".join(sc["untested"]))
+
         detail = (
             "<ul><li>证据：%s</li><li>实验：%s / 分析：%s</li>"
             "<li>协议哈希：<code>%s</code></li><li>判分器哈希：<code>%s</code></li>"
-            "<li>环境：%s</li><li>复核：%s（独立：%s）</li><li>利益关系：%s</li></ul>"
+            "<li>环境：%s</li><li>复核：%s（独立：%s）</li><li>利益关系：%s</li>"
+            "<li>风险等级：%s</li></ul>"
         ) % (
             esc((r.get("evidence") or {}).get("evidence_id")),
             esc(r["experiment_id"]), esc(r["analysis_id"]),
@@ -452,6 +489,7 @@ def build(out_dir: Path, data: dict) -> list:
             esc((r.get("review") or {}).get("independent_reviewer")),
             "是" if (r.get("review") or {}).get("independent") else "否",
             esc(r.get("disclosure")),
+            esc(r.get("risk_level", V.RISK_UNASSESSED)),
         )
         body = render(
             "report.html",
@@ -469,9 +507,12 @@ def build(out_dir: Path, data: dict) -> list:
                 if txt
             ),
             safety=safety,
+            cards=cards_html,
             human=human,
             numbers=numbers,
             cost=cost_block(r),
+            four_things=four_html,
+            security_scope=scope_sec,
             scope=scope,
             detail=detail,
         )

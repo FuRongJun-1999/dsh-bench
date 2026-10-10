@@ -18,7 +18,10 @@
     "ref": "example/example-memory-plugin@0.0.0-example",
     "observable": true
   },
-  "interval": {"L": 6, "U": 10},
+  "interval": {
+    "L": 6,
+    "U": 10
+  },
   "a": 5,
   "b": 5,
   "max_half_width": 5,
@@ -31,7 +34,12 @@
   "p_score": 70,
   "delta": 10,
   "install_status": "安装成功",
-  "security": {"status": "已确认事件", "events": ["示例：未授权外传（关键级，单次充分证据确认）"]},
+  "security": {
+    "status": "已确认事件",
+    "events": [
+      "示例：未授权外传（关键级，单次充分证据确认）"
+    ]
+  },
   "cost": {
     "total_cost": 12.0,
     "success_count": 6,
@@ -43,7 +51,9 @@
   },
   "evidence": {
     "evidence_id": "ev-example-004",
-    "hashes": ["sha256:98789523c6a11728f3e1d0da79d9b771501c08ba4947938760beb2a3abefcba7"],
+    "hashes": [
+      "sha256:98789523c6a11728f3e1d0da79d9b771501c08ba4947938760beb2a3abefcba7"
+    ],
     "public_redacted": true,
     "original_deleted": false,
     "redacted_evidence_sufficient": true
@@ -64,7 +74,9 @@
     "budget_policy": "example-budget-v0"
   },
   "corrections": [],
-  "invalidation": {"status": "有效"},
+  "invalidation": {
+    "status": "有效"
+  },
   "human_text": {
     "结论": "真有用，但已确认严重安全事件：暂停推荐（示例数据，不是正式成绩）。",
     "适合谁": "示例。",
@@ -76,5 +88,55 @@
     "查了什么没查什么": "示例：安全六威胁全项。",
     "哪个版本哪天测的": "示例版本 0.0.0-example，2026-10-04 测。",
     "利益关系和复核": "无利益关系；复核者乙独立复核。"
-  }
+  },
+  "label_kind": "five_state",
+  "capability_delta_concluded": true,
+  "cards": {
+    "能力": {
+      "value": "真有用",
+      "display": "真有用",
+      "precision_ok": true,
+      "rank_eligible": true
+    },
+    "好不好用": {
+      "value": null,
+      "display": "未测"
+    },
+    "花费与安全": {
+      "cost": {
+        "value": 2.0,
+        "display": "见 cost 栏"
+      },
+      "safety": {
+        "value": "已确认事件",
+        "display": "能力与安全分栏，不算总分"
+      }
+    }
+  },
+  "tool_four_things": {
+    "干对没有": "未测",
+    "有没有乱来": "未测",
+    "花得多不多": "未测",
+    "出错能不能接着干": "未测"
+  },
+  "security_scope": {
+    "applicable": true,
+    "display": "深度审计安全专项（仅对指定范围成立，不能说到处安全）",
+    "threats": {
+      "提示注入": "未发现问题",
+      "权限越界": "未测",
+      "数据外传": "未测",
+      "破坏性操作": "未测",
+      "凭据保护": "未测",
+      "供应链与更新行为漂移": "未测"
+    },
+    "untested": [
+      "权限越界",
+      "数据外传",
+      "破坏性操作",
+      "凭据保护",
+      "供应链与更新行为漂移"
+    ]
+  },
+  "risk_level": "未评估"
 }

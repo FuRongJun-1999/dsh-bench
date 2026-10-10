@@ -1,0 +1,11 @@
+# 全仓统一 LF 行尾。
+# 原因：变异自证（tests/mutate_selfcheck.py）用多行锚点做源码级替换，
+# 若签出时行尾被翻成 CRLF，锚点会失配（「出现 0 次」）——本仓踩过这个坑。
+# 真源哈希也按 LF 归一化后计算（见 tests/test_validate_data.py::t68）。
+* text=auto eol=lf
+*.py text eol=lf
+*.md text eol=lf
+*.json text eol=lf
+*.html text eol=lf
+*.css text eol=lf
+*.txt text eol=lf

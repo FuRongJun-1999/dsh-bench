@@ -18,7 +18,10 @@
     "ref": "example/example-memory-plugin@0.0.0-example",
     "observable": true
   },
-  "interval": {"L": -9, "U": 9},
+  "interval": {
+    "L": -9,
+    "U": 9
+  },
   "a": 5,
   "b": 5,
   "max_half_width": 5,
@@ -31,7 +34,10 @@
   "p_score": 62,
   "delta": 2,
   "install_status": "安装成功",
-  "security": {"status": "未测", "events": []},
+  "security": {
+    "status": "未测",
+    "events": []
+  },
   "cost": {
     "total_cost": 10.0,
     "success_count": 5,
@@ -43,7 +49,9 @@
   },
   "evidence": {
     "evidence_id": "ev-example-002",
-    "hashes": ["sha256:98789523c6a11728f3e1d0da79d9b771501c08ba4947938760beb2a3abefcba7"],
+    "hashes": [
+      "sha256:98789523c6a11728f3e1d0da79d9b771501c08ba4947938760beb2a3abefcba7"
+    ],
     "public_redacted": true,
     "original_deleted": false,
     "redacted_evidence_sufficient": true
@@ -64,7 +72,9 @@
     "budget_policy": "example-budget-v0"
   },
   "corrections": [],
-  "invalidation": {"status": "有效"},
+  "invalidation": {
+    "status": "有效"
+  },
   "human_text": {
     "结论": "还说不准（示例数据，不是正式成绩）。",
     "适合谁": "示例。",
@@ -76,5 +86,41 @@
     "查了什么没查什么": "示例：只跑了 3 个独立场景。",
     "哪个版本哪天测的": "示例版本 0.0.0-example，2026-10-02 测。",
     "利益关系和复核": "无利益关系；复核者乙独立复核。"
-  }
+  },
+  "label_kind": "five_state",
+  "capability_delta_concluded": true,
+  "cards": {
+    "能力": {
+      "value": "还说不准",
+      "display": "还说不准",
+      "precision_ok": false,
+      "rank_eligible": true
+    },
+    "好不好用": {
+      "value": null,
+      "display": "未测"
+    },
+    "花费与安全": {
+      "cost": {
+        "value": 2.0,
+        "display": "见 cost 栏"
+      },
+      "safety": {
+        "value": "未测",
+        "display": "能力与安全分栏，不算总分"
+      }
+    }
+  },
+  "tool_four_things": {
+    "干对没有": "未测",
+    "有没有乱来": "未测",
+    "花得多不多": "未测",
+    "出错能不能接着干": "未测"
+  },
+  "security_scope": {
+    "applicable": false,
+    "display": "不适用：标准测评 不含六类安全专项（要做专项请走深度审计）",
+    "threats": {}
+  },
+  "risk_level": "未评估"
 }

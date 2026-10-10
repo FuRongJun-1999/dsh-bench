@@ -293,13 +293,54 @@ def t67():
 
 @test("t68_spec_hash_registry_in_sync")
 def t68():
-    """真源哈希登记必须与实际文件一致（手册：正式实验必须绑定实际文件哈希）。"""
+    """真源哈希登记必须与实际文件一致（手册：正式实验必须绑定实际文件哈希）。
+
+    哈希按**行尾归一化后的内容**算（CRLF→LF）：Git 在不同平台签出时行尾可能不同，
+    按原始字节算哈希会让同一份内容在不同机器上判出不同结果。
+    """
     import hashlib
 
     registry = (ROOT / "docs" / "README.md").read_text(encoding="utf-8")
     for p in sorted((ROOT / "docs" / "spec").glob("*.md")):
-        digest = hashlib.sha256(p.read_bytes()).hexdigest()
+        normalized = p.read_bytes().replace(b"\r\n", b"\n")
+        digest = hashlib.sha256(normalized).hexdigest()
         check(digest in registry, "%s 的哈希未登记在 docs/README.md" % p.name)
+
+
+@test("t69_quickcheck_depth_cannot_claim_five_state")
+def t69():
+    """方案 §8：体验快测不得产出能力 Δ 结论（校验器层也必须挡住）。"""
+    r = json.loads(
+        (ROOT / "data" / "examples" / "report-example-quickcheck.json").read_text(encoding="utf-8")
+    )
+    ok, errors = write_and_validate(r)
+    check(ok, "快测示例应通过：%s" % errors_text(errors))
+
+    # 注入：快测档改口宣称「真有用」⇒ 必须被拒并点名档位越界
+    bad = copy.deepcopy(r)
+    bad["capability_state"] = "真有用"
+    bad["label_kind"] = "five_state"
+    bad["capability_delta_concluded"] = True
+    bad["rank_eligible"] = True
+    ok2, errors2 = write_and_validate(bad)
+    check(not ok2, "快测档宣称五状态必须被拒")
+    text = errors_text(errors2)
+    check("档位越界" in text, "须点名档位越界：%s" % text)
+    check("能力 Δ" in text, "须点名「快测不测能力 Δ」：%s" % text)
+
+    # 注入：快测结论位出现禁用词 ⇒ 必须被拒
+    bad2 = copy.deepcopy(r)
+    bad2["human_text"]["结论"] = "快测通过"
+    ok3, errors3 = write_and_validate(bad2)
+    check(not ok3, "快测结论位出现禁用词必须被拒")
+    check("快测禁用词" in errors_text(errors3), "须点名快测禁用词：%s" % errors_text(errors3))
+
+    # 对照：同内容在标准测评档是允许的五状态报告（防「把所有档都退化成快测」）
+    std = json.loads(
+        (ROOT / "data" / "examples" / "report-example-memory.json").read_text(encoding="utf-8")
+    )
+    ok4, errors4 = write_and_validate(std)
+    check(ok4, "标准测评档五状态应通过：%s" % errors_text(errors4))
 
 
 # --------------------------------------------------------------- 变异清单
@@ -382,6 +423,16 @@ MUTATIONS = [
      "anchor": "# 端到端验证计划 v0（修订版）",
      "replace": "# 端到端验证计划 v0（修订版·改一字）",
      "count": 1, "expect": ["t68_spec_hash_registry_in_sync"], "rule": "真源哈希登记与实际文件同步"},
+    {"id": "W69", "target": "scripts/validate_data.py", "test_file": "tests/test_validate_data.py",
+     "anchor": "        if declared_state in verdict.CAPABILITY_DELTA_STATES:",
+     "replace": "        if False:",
+     "count": 1, "expect": ["t69_quickcheck_depth_cannot_claim_five_state"],
+     "rule": "方案 §8 快测不得产出能力 Δ 结论（校验器层）"},
+    {"id": "W70", "target": "scripts/validate_data.py", "test_file": "tests/test_validate_data.py",
+     "anchor": "            banned = verdict.banned_quick_check_wording(str(line), strict=(field == \"结论\"))",
+     "replace": "            banned = []",
+     "count": 1, "expect": ["t69_quickcheck_depth_cannot_claim_five_state"],
+     "rule": "手册 §6 快测禁用词（校验器层）"},
 ]
 
 
