@@ -1,0 +1,186 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "dsh-bench report",
+  "description": "报告层（手册 §13.3）：由有效运行与判分输出生成。分数、区间和标签禁止手改。",
+  "schema_version": "1.0.0",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "report_id",
+    "report_version",
+    "report_status",
+    "plugin_id",
+    "domain",
+    "depth",
+    "experiment_id",
+    "analysis_id",
+    "protocol_hash",
+    "taskset_hash",
+    "scorer_hash",
+    "environment_id",
+    "plugin_identity",
+    "interval",
+    "a",
+    "b",
+    "max_half_width",
+    "half_width",
+    "capability_state",
+    "precision_ok",
+    "scenario_count",
+    "rerun_count",
+    "b0_score",
+    "p_score",
+    "delta",
+    "install_status",
+    "security",
+    "cost",
+    "evidence",
+    "review",
+    "disclosure",
+    "tested_at",
+    "expires_at",
+    "comparability",
+    "human_text"
+  ],
+  "properties": {
+    "schema_version": {"type": "string", "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$"},
+    "report_id": {"type": "string", "minLength": 1},
+    "report_version": {"type": "integer", "minimum": 1},
+    "report_status": {
+      "type": "string",
+      "enum": ["正式", "方法试验", "待验证", "已失效"]
+    },
+    "plugin_id": {"type": "string", "minLength": 1},
+    "domain": {"type": "string", "minLength": 1},
+    "depth": {"type": "string", "enum": ["体验快测", "标准测评", "深度审计"]},
+    "experiment_id": {"type": "string", "minLength": 1},
+    "analysis_id": {"type": "string", "minLength": 1},
+    "protocol_hash": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "taskset_hash": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "scorer_hash": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "environment_id": {"type": "string", "minLength": 1},
+    "plugin_identity": {
+      "type": "object",
+      "required": ["form", "ref", "observable"],
+      "properties": {
+        "form": {"type": "string", "enum": ["源码版", "发布包版", "远程服务版"]},
+        "ref": {"type": "string"},
+        "observable": {"type": "boolean"}
+      }
+    },
+    "interval": {
+      "type": ["object", "null"],
+      "required": ["L", "U"],
+      "properties": {"L": {"type": "number"}, "U": {"type": "number"}}
+    },
+    "a": {"type": "number", "exclusiveMinimum": 0},
+    "b": {"type": "number", "exclusiveMinimum": 0},
+    "max_half_width": {"type": "number", "exclusiveMinimum": 0},
+    "half_width": {"type": ["number", "null"], "minimum": 0},
+    "capability_state": {
+      "type": "string",
+      "enum": ["真有用", "帮倒忙", "没啥差别", "还说不准", "没法测", "待验证/待修复", "实验无效/待重跑"]
+    },
+    "precision_ok": {"type": "boolean"},
+    "scenario_count": {"type": "integer", "minimum": 0},
+    "rerun_count": {"type": "integer", "minimum": 0},
+    "b0_score": {"type": ["number", "null"]},
+    "p_score": {"type": ["number", "null"]},
+    "delta": {"type": ["number", "null"]},
+    "install_status": {"type": "string", "enum": ["安装成功", "安装失败", "未测"]},
+    "security": {
+      "type": "object",
+      "required": ["status", "events"],
+      "properties": {
+        "status": {
+          "type": "string",
+          "enum": ["未测", "未发现问题", "调查中", "已确认事件", "指定检查通过"]
+        },
+        "events": {"type": "array"}
+      }
+    },
+    "cost": {
+      "type": "object",
+      "required": [
+        "total_cost",
+        "success_count",
+        "baseline_cost",
+        "baseline_success_count",
+        "unit_success_cost",
+        "incremental_unit_success_cost"
+      ],
+      "properties": {
+        "total_cost": {"type": "number"},
+        "success_count": {"type": "integer", "minimum": 0},
+        "baseline_cost": {"type": "number"},
+        "baseline_success_count": {"type": "integer", "minimum": 0},
+        "unit_success_cost": {"type": ["number", "string"]},
+        "incremental_unit_success_cost": {"type": ["number", "string"]},
+        "notes": {"type": "string"}
+      }
+    },
+    "evidence": {
+      "type": "object",
+      "required": ["evidence_id", "hashes", "public_redacted", "original_deleted", "redacted_evidence_sufficient"],
+      "properties": {
+        "evidence_id": {"type": "string", "minLength": 1},
+        "hashes": {"type": "array"},
+        "public_redacted": {"type": "boolean"},
+        "original_deleted": {"type": "boolean"},
+        "redacted_evidence_sufficient": {"type": "boolean"}
+      }
+    },
+    "review": {
+      "type": "object",
+      "required": ["executor", "independent_reviewer", "independent", "reviewed_at"],
+      "properties": {
+        "executor": {"type": "string", "minLength": 1},
+        "independent_reviewer": {"type": "string", "minLength": 1},
+        "independent": {"type": "boolean"},
+        "reviewed_at": {"type": "string", "minLength": 1}
+      }
+    },
+    "disclosure": {"type": "string"},
+    "tested_at": {"type": "string", "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}"},
+    "expires_at": {"type": "string", "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"},
+    "comparability": {
+      "type": "object",
+      "required": ["model", "host", "taskset", "budget_policy"],
+      "properties": {
+        "model": {"type": "string"},
+        "host": {"type": "string"},
+        "taskset": {"type": "string"},
+        "budget_policy": {"type": "string"}
+      }
+    },
+    "corrections": {"type": "array"},
+    "invalidation": {"type": "object"},
+    "human_text": {
+      "type": "object",
+      "required": [
+        "结论",
+        "适合谁",
+        "不适合谁",
+        "这次做了什么",
+        "装与不装差多少",
+        "花了多少钱多久",
+        "最需要注意的坑",
+        "查了什么没查什么",
+        "哪个版本哪天测的",
+        "利益关系和复核"
+      ],
+      "properties": {
+        "结论": {"type": "string"},
+        "适合谁": {"type": "string"},
+        "不适合谁": {"type": "string"},
+        "这次做了什么": {"type": "string"},
+        "装与不装差多少": {"type": "string"},
+        "花了多少钱多久": {"type": "string"},
+        "最需要注意的坑": {"type": "string"},
+        "查了什么没查什么": {"type": "string"},
+        "哪个版本哪天测的": {"type": "string"},
+        "利益关系和复核": {"type": "string"}
+      }
+    }
+  }
+}

@@ -1,0 +1,12 @@
+{
+  "schema_version": "1.0.0",
+  "ledger_id": "ledger-2026-10",
+  "month": "2026-10",
+  "tested_count": 4,
+  "published_reports": 0,
+  "failed_count": 1,
+  "blocked": ["示例工具插件：安装失败，能力没法测"],
+  "cost_total": 37.0,
+  "human_hours": 12.0,
+  "notes": "示例账目：第一月先公开原始数字，不急着许愿增长目标。发布报告数为 0，因为还没有经过验证的正式成绩。"
+}

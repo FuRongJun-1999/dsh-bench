@@ -1,0 +1,31 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "dsh-bench ledger",
+  "description": "月度账本（方案 §16 末：测了多少、花了多少、失败多少）。第一月先公开原始数字，不急着许愿增长目标。",
+  "schema_version": "1.0.0",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "ledger_id",
+    "month",
+    "tested_count",
+    "published_reports",
+    "failed_count",
+    "blocked",
+    "cost_total",
+    "human_hours",
+    "notes"
+  ],
+  "properties": {
+    "schema_version": {"type": "string", "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$"},
+    "ledger_id": {"type": "string", "minLength": 1},
+    "month": {"type": "string", "pattern": "^[0-9]{4}-[0-9]{2}$"},
+    "tested_count": {"type": "integer", "minimum": 0},
+    "published_reports": {"type": "integer", "minimum": 0},
+    "failed_count": {"type": "integer", "minimum": 0},
+    "blocked": {"type": "array"},
+    "cost_total": {"type": "number", "minimum": 0},
+    "human_hours": {"type": "number", "minimum": 0},
+    "notes": {"type": "string"}
+  }
+}

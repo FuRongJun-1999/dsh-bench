@@ -1,0 +1,80 @@
+{
+  "schema_version": "1.0.0",
+  "report_id": "example-report-memory-001",
+  "report_version": 1,
+  "report_status": "方法试验",
+  "is_example": true,
+  "plugin_id": "example-memory-plugin",
+  "domain": "记忆",
+  "depth": "标准测评",
+  "experiment_id": "exp-example-001",
+  "analysis_id": "ana-example-001",
+  "protocol_hash": "8dd51cbf75b259c5dabfdb928eb112364231b5d8f9f580759534e5d78a34d849",
+  "taskset_hash": "98789523c6a11728f3e1d0da79d9b771501c08ba4947938760beb2a3abefcba7",
+  "scorer_hash": "a669236b5f4b3b5414baff920f78411fdf303b0c286a1dbfa1e1a05b57f41507",
+  "environment_id": "env-example-001",
+  "plugin_identity": {
+    "form": "源码版",
+    "ref": "example/example-memory-plugin@0.0.0-example",
+    "observable": true
+  },
+  "interval": {"L": 6, "U": 10},
+  "a": 5,
+  "b": 5,
+  "max_half_width": 5,
+  "half_width": 2,
+  "capability_state": "真有用",
+  "precision_ok": true,
+  "scenario_count": 8,
+  "rerun_count": 24,
+  "b0_score": 60,
+  "p_score": 70,
+  "delta": 10,
+  "install_status": "安装成功",
+  "security": {"status": "未发现问题", "events": []},
+  "cost": {
+    "total_cost": 12.0,
+    "success_count": 6,
+    "baseline_cost": 8.0,
+    "baseline_success_count": 5,
+    "unit_success_cost": 2.0,
+    "incremental_unit_success_cost": 4.0,
+    "notes": "示例计量。"
+  },
+  "evidence": {
+    "evidence_id": "ev-example-001",
+    "hashes": ["sha256:98789523c6a11728f3e1d0da79d9b771501c08ba4947938760beb2a3abefcba7"],
+    "public_redacted": true,
+    "original_deleted": false,
+    "redacted_evidence_sufficient": true
+  },
+  "review": {
+    "executor": "执行者甲",
+    "independent_reviewer": "复核者乙",
+    "independent": true,
+    "reviewed_at": "2026-10-02"
+  },
+  "disclosure": "无利益关系（示例）。",
+  "tested_at": "2026-10-01",
+  "expires_at": "2026-12-30",
+  "comparability": {
+    "model": "example-model-v1",
+    "host": "example-host-1.0",
+    "taskset": "example-taskset-v0",
+    "budget_policy": "example-budget-v0"
+  },
+  "corrections": [],
+  "invalidation": {"status": "有效"},
+  "human_text": {
+    "结论": "真有用（示例数据，不是正式成绩）。",
+    "适合谁": "示例。",
+    "不适合谁": "示例。",
+    "这次做了什么": "示例：同一套题，装和不装各跑一遍。",
+    "装与不装差多少": "示例：比不装多了 10 分。",
+    "花了多少钱多久": "示例：一共 12 元，人工 3 小时。",
+    "最需要注意的坑": "示例数据，不要据此做任何决定。",
+    "查了什么没查什么": "示例：只查了记忆存取，没查安全六威胁全项。",
+    "哪个版本哪天测的": "示例版本 0.0.0-example，2026-10-01 测。",
+    "利益关系和复核": "无利益关系；复核者乙独立复核。"
+  }
+}

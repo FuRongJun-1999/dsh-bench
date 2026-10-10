@@ -1,0 +1,33 @@
+{
+  "schema_version": "1.0.0",
+  "plugin_id": "example-tool-plugin",
+  "name": "示例工具插件（演示用）",
+  "category": "工具型",
+  "delivery_form": "远程服务版",
+  "identity": {
+    "form": "远程服务版",
+    "ref": "https://example.invalid/mcp（观测日期 2026-10-01）",
+    "observable": false,
+    "note": "远程服务无法锁定实现，只对观察窗口内行为负责；不据此声称到处安全。"
+  },
+  "audience": "团队",
+  "tested_depth": "未测",
+  "risk_level": "未评估",
+  "recommendation": "待复核",
+  "permissions": [],
+  "maintainer": {
+    "name": "示例作者",
+    "response_days": null,
+    "known_issue_age_days": null,
+    "note": "示例数据，尚未测。"
+  },
+  "disclosure": "无利益关系（示例）。",
+  "author_self_test": "无。",
+  "updated_at": "2026-10-01",
+  "uninstall_notes": "未测。",
+  "price_notes": "未测。",
+  "caveats": "未测就写未测，不留空。",
+  "capabilities": [],
+  "update_log": [],
+  "report_ids": []
+}

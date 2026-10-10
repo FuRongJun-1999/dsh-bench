@@ -1,0 +1,138 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "dsh-bench evidence",
+  "description": "执行证据层（手册 §13.3 最小证据与数据模型 + §13.5 隐私治理）。缺任一必要证据就不能重算相应结论。",
+  "schema_version": "1.0.0",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "evidence_id",
+    "experiment_id",
+    "analysis_id",
+    "manifest",
+    "protocol_hash",
+    "taskset_manifest_hash",
+    "scorer_hash",
+    "environment",
+    "pairs",
+    "runs",
+    "analysis",
+    "review",
+    "public_redacted",
+    "minimal_proof"
+  ],
+  "properties": {
+    "schema_version": {"type": "string", "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$"},
+    "evidence_id": {"type": "string", "minLength": 1},
+    "experiment_id": {"type": "string", "minLength": 1},
+    "analysis_id": {"type": "string", "minLength": 1},
+    "manifest": {
+      "type": "object",
+      "required": [
+        "protocol_hash",
+        "taskset_hash",
+        "scorer_hash",
+        "environment_id",
+        "plugin_identity",
+        "sample_plan",
+        "scenario_groups",
+        "order_seed",
+        "budget",
+        "thresholds",
+        "stop_rule",
+        "disclosure"
+      ],
+      "properties": {
+        "protocol_hash": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+        "taskset_hash": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+        "scorer_hash": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+        "environment_id": {"type": "string", "minLength": 1},
+        "plugin_identity": {"type": "object"},
+        "sample_plan": {"type": "object"},
+        "scenario_groups": {"type": "array"},
+        "order_seed": {"type": ["integer", "string"]},
+        "budget": {"type": "object"},
+        "thresholds": {"type": "object"},
+        "stop_rule": {"type": "object"},
+        "disclosure": {"type": "string"}
+      }
+    },
+    "protocol_hash": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "taskset_manifest_hash": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "scorer_hash": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "environment": {
+      "type": "object",
+      "required": ["environment_id", "os", "host_version", "model", "model_version", "sampling", "dependency_lock", "permissions", "external_services"],
+      "properties": {
+        "environment_id": {"type": "string", "minLength": 1},
+        "os": {"type": "string"},
+        "host_version": {"type": "string"},
+        "model": {"type": "string"},
+        "model_version": {"type": "string"},
+        "sampling": {"type": "string"},
+        "dependency_lock": {"type": "string"},
+        "permissions": {"type": "array"},
+        "external_services": {"type": "array"}
+      }
+    },
+    "pairs": {"type": "array"},
+    "runs": {"type": "array"},
+    "analysis": {
+      "type": "object",
+      "required": [
+        "analysis_id",
+        "method",
+        "seed",
+        "rng",
+        "library_versions",
+        "bootstrap_resamples",
+        "percentile_method",
+        "scenario_aggregation",
+        "scores",
+        "result"
+      ],
+      "properties": {
+        "analysis_id": {"type": "string", "minLength": 1},
+        "method": {"type": "string"},
+        "seed": {"type": ["integer", "string"]},
+        "rng": {"type": "string"},
+        "library_versions": {"type": "object"},
+        "bootstrap_resamples": {"type": "integer", "minimum": 1},
+        "percentile_method": {"type": "string"},
+        "scenario_aggregation": {"type": "string"},
+        "scores": {"type": "object"},
+        "result": {"type": "object"}
+      }
+    },
+    "review": {
+      "type": "object",
+      "required": ["reviewer", "independent", "reviewed_at"],
+      "properties": {
+        "reviewer": {"type": "string", "minLength": 1},
+        "independent": {"type": "boolean"},
+        "reviewed_at": {"type": "string", "minLength": 1}
+      }
+    },
+    "public_redacted": {
+      "type": "object",
+      "required": ["redacted", "original_retention_days", "original_deleted", "redacted_evidence_sufficient"],
+      "properties": {
+        "redacted": {"type": "boolean"},
+        "original_retention_days": {"type": "integer", "minimum": 0},
+        "original_deleted": {"type": "boolean"},
+        "redacted_evidence_sufficient": {"type": "boolean"},
+        "note": {"type": "string"}
+      }
+    },
+    "minimal_proof": {
+      "type": "object",
+      "required": ["correctness", "cost", "security", "state_restore"],
+      "properties": {
+        "correctness": {"type": "array"},
+        "cost": {"type": "array"},
+        "security": {"type": "array"},
+        "state_restore": {"type": "array"}
+      }
+    }
+  }
+}

@@ -1,0 +1,71 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "dsh-bench plugin",
+  "description": "插件登记（方案 §4/§9/§12/§16）。无源码的插件标「无 commit 可观测」，禁止虚构版本号。",
+  "schema_version": "1.0.0",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "plugin_id",
+    "name",
+    "category",
+    "delivery_form",
+    "identity",
+    "audience",
+    "tested_depth",
+    "risk_level",
+    "recommendation",
+    "permissions",
+    "maintainer",
+    "disclosure",
+    "author_self_test",
+    "updated_at",
+    "uninstall_notes",
+    "price_notes",
+    "caveats"
+  ],
+  "properties": {
+    "schema_version": {"type": "string", "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$"},
+    "plugin_id": {"type": "string", "minLength": 1},
+    "name": {"type": "string", "minLength": 1},
+    "category": {"type": "string", "enum": ["能力型", "工具型", "体验型"]},
+    "delivery_form": {"type": "string", "enum": ["源码版", "发布包版", "远程服务版"]},
+    "identity": {
+      "type": "object",
+      "required": ["form", "ref", "observable"],
+      "properties": {
+        "form": {"type": "string", "enum": ["源码版", "发布包版", "远程服务版"]},
+        "ref": {"type": "string"},
+        "observable": {"type": "boolean"},
+        "note": {"type": "string"}
+      }
+    },
+    "audience": {"type": "string", "enum": ["个人", "团队", "企业"]},
+    "tested_depth": {"type": "string", "enum": ["作者自测", "体验快测", "标准测评", "深度审计", "未测"]},
+    "risk_level": {"type": "string", "enum": ["低", "中", "高", "关键", "未评估"]},
+    "recommendation": {
+      "type": "string",
+      "enum": ["可推荐", "限定场景", "待复核", "暂停推荐", "调查中"]
+    },
+    "permissions": {"type": "array"},
+    "maintainer": {
+      "type": "object",
+      "required": ["name", "response_days", "known_issue_age_days"],
+      "properties": {
+        "name": {"type": "string"},
+        "response_days": {"type": ["integer", "null"]},
+        "known_issue_age_days": {"type": ["integer", "null"]},
+        "note": {"type": "string"}
+      }
+    },
+    "disclosure": {"type": "string"},
+    "author_self_test": {"type": "string"},
+    "updated_at": {"type": "string", "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}"},
+    "uninstall_notes": {"type": "string"},
+    "price_notes": {"type": "string"},
+    "caveats": {"type": "string"},
+    "capabilities": {"type": "array"},
+    "update_log": {"type": "array"},
+    "report_ids": {"type": "array"}
+  }
+}

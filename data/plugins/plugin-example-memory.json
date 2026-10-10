@@ -1,0 +1,33 @@
+{
+  "schema_version": "1.0.0",
+  "plugin_id": "example-memory-plugin",
+  "name": "示例记忆插件（演示用）",
+  "category": "能力型",
+  "delivery_form": "源码版",
+  "identity": {
+    "form": "源码版",
+    "ref": "example/example-memory-plugin@0.0.0-example",
+    "observable": true,
+    "note": "示例数据，非真实插件。"
+  },
+  "audience": "个人",
+  "tested_depth": "标准测评",
+  "risk_level": "低",
+  "recommendation": "可推荐",
+  "permissions": ["读工作区文件"],
+  "maintainer": {
+    "name": "示例作者",
+    "response_days": 2,
+    "known_issue_age_days": 10,
+    "note": "示例数据。"
+  },
+  "disclosure": "无利益关系（示例）。",
+  "author_self_test": "作者声明：自测可用（仅声明，不是官方成绩）。",
+  "updated_at": "2026-10-01",
+  "uninstall_notes": "卸载后删除数据目录即可（示例）。",
+  "price_notes": "免费（示例）。",
+  "caveats": "示例数据，不要据此做任何决定。",
+  "capabilities": ["跨会话记住上次交代的事", "回源定位到记录"],
+  "update_log": [],
+  "report_ids": ["example-report-memory-001"]
+}
