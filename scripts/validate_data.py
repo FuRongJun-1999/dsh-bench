@@ -24,7 +24,7 @@ import argparse
 import importlib.util
 import json
 import sys
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -146,7 +146,7 @@ def _num(x):
     return float(x) if isinstance(x, (int, float)) and not isinstance(x, bool) else None
 
 
-def semantic_report(report: dict, verdict) -> list:
+def semantic_report(report: dict, verdict, evidence_ok: bool = True) -> list:
     """复算：状态/半宽/到期日/成本分母，全部由数据算出，拒绝手填。"""
     errors = []
     iv = report.get("interval") or {}
@@ -159,23 +159,52 @@ def semantic_report(report: dict, verdict) -> list:
         if got is None or abs(got - want) > 1e-9:
             errors.append("公式不符：half_width 应为 (U-L)/2=%.6f，实为 %r" % (want, report.get("half_width")))
 
-    # 2) 状态复算
+    # 1a) 门槛由平台冻结（dsh-bench#2：报告自带门槛即放宽判定）
+    for key, frozen in (("a", verdict.A_DEFAULT), ("b", verdict.B_DEFAULT), ("max_half_width", verdict.MAX_HALF_WIDTH_DEFAULT)):
+        got = _num(report.get(key))
+        if got is None:
+            errors.append("门槛 %s 缺失（平台冻结 a=%s / b=%s / max_half_width=%s）" % (key, verdict.A_DEFAULT, verdict.B_DEFAULT, verdict.MAX_HALF_WIDTH_DEFAULT))
+        elif abs(got - frozen) > 1e-9:
+            errors.append("门槛 %s=%r 由平台冻结为 %s（报告自带门槛即放宽判定）" % (key, got, frozen))
+
+    # 1b) 分数口径（手册 §13.1：Δ = P − B0；区间与差值同有同无）（dsh-bench#9）
+    b0, p, dl = _num(report.get("b0_score")), _num(report.get("p_score")), _num(report.get("delta"))
+    if None not in (b0, p, dl) and abs((p - b0) - dl) > 1e-6:
+        errors.append("分数不符：delta 应为 p_score - b0_score = %.6f，实为 %r" % ((p - b0), report.get("delta")))
+    if dl is not None and L is not None and U is not None and not (L - 1e-9 <= dl <= U + 1e-9):
+        errors.append("分数与区间不符：delta=%r 不在区间 [%s, %s] 内" % (report.get("delta"), L, U))
+    if (L is not None) != (dl is not None):
+        errors.append("分数与区间须同有同无：interval 与 delta 一个为空、一个有值")
+
+    # 1c) 测完日期不得在未来（dsh-bench#15：tested_at 写未来即永不过期）
+    ta = report.get("tested_at")
+    if isinstance(ta, str):
+        try:
+            if datetime.strptime(ta, "%Y-%m-%d").date() > date.today():
+                errors.append("测完日期在未来：%s（今天 %s）——未来日期不可作为成绩起点" % (ta, date.today().isoformat()))
+        except ValueError:
+            pass  # 格式非法由 schema pattern 兜底
+
+    # 2) 状态复算（门槛用平台冻结值；时钟用真实今天——与生成器口径一致）（dsh-bench#2/#8①/#15）
     install_failed = report.get("install_status") == "安装失败"
     sec = report.get("security") or {}
     ev = report.get("evidence") or {}
     d = verdict.decide(
         (L, U) if (L is not None and U is not None) else None,
-        a=_num(report.get("a")) or verdict.A_DEFAULT,
-        b=_num(report.get("b")) or verdict.B_DEFAULT,
-        max_half_width=_num(report.get("max_half_width")) or verdict.MAX_HALF_WIDTH_DEFAULT,
+        a=verdict.A_DEFAULT,
+        b=verdict.B_DEFAULT,
+        max_half_width=verdict.MAX_HALF_WIDTH_DEFAULT,
         install_failed=install_failed,
         confirmed_severe_security_event=sec.get("status") == "已确认事件",
         security_investigation=sec.get("status") == "调查中",
         tested_at=report.get("tested_at"),
-        now=report.get("tested_at"),  # 只做状态复算，不引入外部时钟
+        now=date.today().isoformat(),
         original_deleted=bool(ev.get("original_deleted")),
         redacted_evidence_sufficient=bool(ev.get("redacted_evidence_sufficient", True)),
         depth=report.get("depth", verdict.DEPTH_STANDARD),
+        report_status=report.get("report_status", "正式"),
+        invalidation=report.get("invalidation"),
+        evidence_ok=evidence_ok,
     )
     declared = report.get("capability_state")
     if declared != d.capability_state:
@@ -330,21 +359,52 @@ def semantic_ledger(led: dict, verdict) -> list:
     return errors
 
 
+# ------------------------------------------------------------- 证据链（dsh-bench#7）
+
+
+def _resolve_evidence(report_path: Path, report: dict, verdict) -> tuple:
+    """evidence_id 必须解析到 data/evidence/ 下的真实文件；证据自身校验不通过 → 引用它的报告不得发布。"""
+    eid = (report.get("evidence") or {}).get("evidence_id")
+    if not eid:
+        return False, ["evidence.evidence_id 缺失（缺必要证据 → 待验证/待修复，不进排名）"]
+    ev_dir = report_path.parent.parent / "evidence"
+    if not ev_dir.is_dir():
+        return False, ["证据目录不存在：%s（evidence_id=%r 悬空）" % (ev_dir, eid)]
+    for p in sorted(ev_dir.glob("*.json")):
+        try:
+            d = json.loads(p.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            continue
+        if d.get("evidence_id") != eid:
+            continue
+        ok, ev_errors = validate_file(p, verdict, release=False)
+        if not ok:
+            return False, ["证据文件 %s 自身校验未通过，引用它的报告不得发布：%s" % (p.name, "；".join(ev_errors[:3]))]
+        return True, []
+    return False, ["证据 %r 悬空：data/evidence/ 下无 evidence_id 匹配的文件" % eid]
+
+
 # ------------------------------------------------------------- 主流程
 
 
+DIR_KIND = {
+    "reports": "report",
+    "examples": "report",
+    "plugins": "plugin",
+    "evidence": "evidence",
+    "ledger": "ledger",
+}
+
+
 def infer_kind(path: Path) -> str:
-    name = path.name
-    for kind in KIND_SCHEMA:
-        if name.startswith(kind + "-") or name.startswith(kind + "_") or name == kind + ".json":
-            return kind
-    return ""
+    """按**所在目录**定类型（dsh-bench#18：文件名前缀可被仿冒，目录才是校验器与生成器共同的判定面）。"""
+    return DIR_KIND.get(path.parent.name, "")
 
 
 def validate_file(path: Path, verdict, release: bool = False) -> tuple:
     kind = infer_kind(path)
     if not kind:
-        return False, ["无法从文件名推断类型（须 report-/plugin-/evidence-/ledger- 前缀）"]
+        return False, ["无法从所在目录推断类型（须位于 reports/、examples/、plugins/、evidence/、ledger/ 之一）"]
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as exc:
@@ -357,7 +417,9 @@ def validate_file(path: Path, verdict, release: bool = False) -> tuple:
             "schema_version 不符：文件 %r，schema %r" % (data.get("schema_version"), schema.get("schema_version"))
         )
     if kind == "report":
-        errors += semantic_report(data, verdict)
+        ev_ok, ev_errors = _resolve_evidence(path, data, verdict)
+        errors += ev_errors
+        errors += semantic_report(data, verdict, evidence_ok=ev_ok)
         if release and data.get("report_status") != "正式":
             errors.append("发布检查：report_status=%r，正式发布只收「正式」" % data.get("report_status"))
         if release and data.get("is_example"):

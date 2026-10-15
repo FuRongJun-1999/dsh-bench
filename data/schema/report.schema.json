@@ -154,14 +154,17 @@
     },
     "a": {
       "type": "number",
+      "const": 5,
       "exclusiveMinimum": 0
     },
     "b": {
       "type": "number",
+      "const": 5,
       "exclusiveMinimum": 0
     },
     "max_half_width": {
       "type": "number",
+      "const": 5,
       "exclusiveMinimum": 0
     },
     "half_width": {

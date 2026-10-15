@@ -71,6 +71,9 @@ CAPABILITY_DELTA_STATES = (STATE_USEFUL, STATE_HARMFUL, STATE_EQUIVALENT, STATE_
 A_DEFAULT = 5.0            # 正向门槛（最小有意义提升）
 B_DEFAULT = 5.0            # 可接受退化幅度
 MAX_HALF_WIDTH_DEFAULT = 5.0   # 精度门槛：区间半宽上限
+
+# dsh-bench#2：门槛由平台冻结，报告自带门槛一律拒绝（否则报告可自行放宽判定）
+FROZEN_THRESHOLDS = {"a": A_DEFAULT, "b": B_DEFAULT, "max_half_width": MAX_HALF_WIDTH_DEFAULT}
 VALIDITY_DAYS_DEFAULT = 90     # 成绩默认有效期
 
 DEPTH_FAST = "体验快测"
@@ -374,6 +377,9 @@ def decide(
     tool_results: Optional[dict] = None,
     # 方案 §8：深度审计的六类安全专项证据（键=六威胁名）
     security_six_threats: Optional[dict] = None,
+    # 生命周期（dsh-bench#4）：report_status 与 invalidation 参与排名资格与推荐
+    report_status: str = "正式",
+    invalidation: Optional[dict] = None,
     # 方案 §9：风险等级（未查清就写「未评估」，不硬给等级）
     risk_level: Optional[str] = None,
 ) -> Decision:
@@ -599,6 +605,15 @@ def decide(
     if depth not in RANKING_DEPTHS:
         notes.append("档位「%s」不进能力榜。" % depth)
 
+    # --- 7b. 生命周期：report_status 与 invalidation 参与排名资格（dsh-bench#4）---
+    if report_status != "正式":
+        rank_eligible = False
+        notes.append("report_status=%r：非「正式」报告不进数字排名（方法试验／待验证照常展示）。" % report_status)
+    inv_status = (invalidation or {}).get("status")
+    if inv_status and inv_status != "有效":
+        rank_eligible = False
+        notes.append("invalidation.status=%r：已失效报告退榜（原因：%s）。" % (inv_status, (invalidation or {}).get("reason") or "未填"))
+
     # --- 8. 推荐资格（安全独立通道，不覆盖能力结论）-------------------
     if confirmed_severe_security_event:
         recommendation = "暂停推荐"
@@ -611,6 +626,11 @@ def decide(
         recommendation = "待复核"
     elif expired:
         recommendation = "待复核"
+    elif inv_status and inv_status != "有效":
+        recommendation = "待复核"
+    elif state == STATE_HARMFUL:
+        recommendation = "不推荐"
+        notes.append("区间为负贡献（帮倒忙）：不推荐、不进「值得试」；结果照常展示与排名（明确负贡献不隐藏）。")
     elif state in (STATE_UNTESTABLE, STATUS_PENDING, STATUS_INVALID_RUN):
         recommendation = "待复核"
     else:
@@ -618,6 +638,7 @@ def decide(
 
     worth_trying = bool(
         rank_eligible and not confirmed_severe_security_event and not security_investigation
+        and recommendation == "可推荐"
     )
 
     badges = []

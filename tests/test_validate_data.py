@@ -58,10 +58,23 @@ def base_report() -> dict:
     )
 
 
-def write_and_validate(report: dict, release: bool = False):
+def write_and_validate(report: dict, release: bool = False, evidence_id: str = None):
+    """隔离数据目录：reports/report-case.json + evidence/（#18 类型按目录、#7 证据解析）。
+
+    evidence_id 缺省时按报告自带的 evidence.evidence_id 取对应示例证据文件。
+    """
     tmp = Path(tempfile.mkdtemp(prefix="lpb_val_"))
-    p = tmp / "report-case.json"
+    d = tmp / "reports"
+    d.mkdir()
+    p = d / "report-case.json"
     p.write_text(json.dumps(report, ensure_ascii=False), encoding="utf-8")
+    ev = tmp / "evidence"
+    ev.mkdir()
+    eid = evidence_id or (report.get("evidence") or {}).get("evidence_id") or ""
+    if eid:
+        src_ev = ROOT / "data" / "evidence" / ("evidence-%s.json" % eid.replace("ev-", "", 1))
+        if src_ev.exists():
+            (ev / src_ev.name).write_text(src_ev.read_text(encoding="utf-8"), encoding="utf-8")
     return VD.validate_file(p, VD.load_verdict(), release=release)
 
 
@@ -182,9 +195,11 @@ def t61():
     p = ROOT / "data" / "plugins" / "plugin-example-tool.json"
     data = json.loads(p.read_text(encoding="utf-8"))
     data["identity"]["note"] = ""
-    tmp = Path(tempfile.mkdtemp(prefix="lpb_pl_")) / "plugin-case.json"
-    tmp.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
-    ok, errors = VD.validate_file(tmp, VD.load_verdict())
+    d = Path(tempfile.mkdtemp(prefix="lpb_pl_")) / "plugins"
+    d.mkdir()
+    p2 = d / "plugin-case.json"
+    p2.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
+    ok, errors = VD.validate_file(p2, VD.load_verdict())
     check(not ok, "无 commit 可观测却无说明必须被拒")
     check("无 commit 可观测" in errors_text(errors), "须点名该约束：%s" % errors_text(errors))
 
@@ -194,9 +209,11 @@ def t62():
     p = ROOT / "data" / "evidence" / "evidence-example-001.json"
     data = json.loads(p.read_text(encoding="utf-8"))
     data["minimal_proof"]["state_restore"] = []
-    tmp = Path(tempfile.mkdtemp(prefix="lpb_ev_")) / "evidence-case.json"
-    tmp.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
-    ok, errors = VD.validate_file(tmp, VD.load_verdict())
+    d = Path(tempfile.mkdtemp(prefix="lpb_ev_")) / "evidence"
+    d.mkdir()
+    p2 = d / "evidence-case.json"
+    p2.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
+    ok, errors = VD.validate_file(p2, VD.load_verdict())
     check(not ok, "最小证明集缺项必须被拒")
     check("state_restore" in errors_text(errors), "须点名缺哪项：%s" % errors_text(errors))
 
@@ -214,12 +231,18 @@ def t63():
 # --------------------------------------------------------------- 生成器守卫
 
 
+def _legal_ev_index():
+    return {"ev-example-001": json.loads(
+        (ROOT / "data" / "evidence" / "evidence-example-001.json").read_text(encoding="utf-8")
+    )}
+
+
 @test("t59_build_rejects_handfilled_state")
 def t59():
     r = base_report()
     r["capability_state"] = "帮倒忙"   # 与区间复算不符
     try:
-        BS.check_report(dict(r, _source="case"))
+        BS.check_report(dict(r, _source="case"), _legal_ev_index())
         raise AssertionError("生成器必须拒绝手填状态")
     except BS.BuildError as exc:
         check("禁止手填" in str(exc), "中止理由须点名禁止手填：%s" % exc)
@@ -230,7 +253,7 @@ def t64():
     r = base_report()
     r["total_score"] = 88
     try:
-        BS.check_report(dict(r, _source="case"))
+        BS.check_report(dict(r, _source="case"), _legal_ev_index())
         raise AssertionError("生成器必须拒绝总分字段")
     except BS.BuildError as exc:
         check("total_score" in str(exc), "中止理由须点名字段：%s" % exc)
@@ -345,6 +368,90 @@ def t69():
 
 # --------------------------------------------------------------- 变异清单
 
+
+# --------------------------------------------------------------- 第一批修复（dsh-bench#2/#7/#9/#15/#18）
+
+
+@test("t70_thresholds_frozen_reject_report_values")
+def t70():
+    r = base_report()
+    r["a"] = 0.1
+    r["max_half_width"] = 50
+    ok, errors = write_and_validate(r)
+    check(not ok, "报告自带门槛必须被拒")
+    txt = errors_text(errors)
+    check("平台冻结" in txt and "a=0.1" in txt.replace("0.1'", "0.1'"), "中止理由须点名门槛冻结：%s" % txt)
+
+
+@test("t71_scores_must_cross_check")
+def t71():
+    verdict = VD.load_verdict()
+    r = base_report()
+    r["delta"] = -50
+    errors = VD.semantic_report(r, verdict)
+    txt = errors_text(errors)
+    check("分数不符" in txt, "delta ≠ p−b0 须报「分数不符」：%s" % txt)
+    check("分数与区间不符" in txt, "delta 区间外须报「分数与区间不符」：%s" % txt)
+    r2 = base_report()
+    r2["interval"] = {"L": 6, "U": 10}
+    r2["half_width"] = 2.0
+    r2.pop("delta")
+    errors2 = VD.semantic_report(r2, verdict)
+    check(any("同有同无" in e for e in errors2), "interval 与 delta 同有同无须成立：%s" % errors_text(errors2))
+
+
+@test("t72_future_tested_at_rejected")
+def t72():
+    verdict = VD.load_verdict()
+    r = base_report()
+    r["tested_at"] = "2099-01-01"
+    r["expires_at"] = "2099-04-01"
+    errors = VD.semantic_report(r, verdict)
+    check(any("测完日期在未来" in e for e in errors), "未来测完日期须被拒：%s" % errors_text(errors))
+
+
+@test("t73_kind_by_directory_not_prefix")
+def t73():
+    verdict = VD.load_verdict()
+    tmp = Path(tempfile.mkdtemp(prefix="lpb_kind_"))
+    rep = tmp / "reports"
+    rep.mkdir()
+    r = base_report()
+    # 报告改名 ledger-k.json 放 reports/：仍按报告校验（#18）
+    p = rep / "ledger-k.json"
+    r["half_width"] = 99
+    p.write_text(json.dumps(r, ensure_ascii=False), encoding="utf-8")
+    ok, errors = VD.validate_file(p, verdict)
+    check(not ok and any("half_width" in e for e in errors), "reports/ 下文件须按报告校验（不看文件名）：%s" % errors_text(errors))
+    # 放根目录：无法推断类型
+    p2 = tmp / "whatever.json"
+    p2.write_text(json.dumps(base_report(), ensure_ascii=False), encoding="utf-8")
+    ok2, errors2 = VD.validate_file(p2, verdict)
+    check(not ok2 and any("所在目录" in e for e in errors2), "根目录文件须报「无法从所在目录推断类型」：%s" % errors_text(errors2))
+
+
+@test("t74_dangling_evidence_rejected")
+def t74():
+    r = base_report()
+    r["evidence"]["evidence_id"] = "does-not-exist"
+    ok, errors = write_and_validate(r)
+    check(not ok and any("悬空" in e for e in errors), "悬空证据引用必须被拒：%s" % errors_text(errors))
+
+
+@test("t75_evidence_fail_propagates")
+def t75():
+    verdict = VD.load_verdict()
+    tmp = Path(tempfile.mkdtemp(prefix="lpb_ev_"))
+    rep = tmp / "reports"; rep.mkdir()
+    evd = tmp / "evidence"; evd.mkdir()
+    ev = json.loads((ROOT / "data" / "evidence" / "evidence-example-001.json").read_text(encoding="utf-8"))
+    ev["minimal_proof"].pop("security", None)   # 证据自身缺必要项
+    (evd / "evidence-example-001.json").write_text(json.dumps(ev, ensure_ascii=False), encoding="utf-8")
+    (rep / "report-case.json").write_text(json.dumps(base_report(), ensure_ascii=False), encoding="utf-8")
+    ok, errors = VD.validate_file(rep / "report-case.json", verdict)
+    check(not ok and any("自身校验未通过" in e for e in errors), "证据 FAIL 须传播到引用它的报告：%s" % errors_text(errors))
+
+
 MUTATIONS = [
     {"id": "W51", "target": "scripts/validate_data.py", "test_file": "tests/test_validate_data.py",
      "anchor": "        for key in schema.get(\"required\", []):",
@@ -353,7 +460,7 @@ MUTATIONS = [
     {"id": "W52", "target": "scripts/validate_data.py", "test_file": "tests/test_validate_data.py",
      "anchor": "        if got is None or abs(got - want) > 1e-9:",
      "replace": "        if False:",
-     "count": 1, "expect": ["t52_formula_mismatch_rejected"], "rule": "半宽公式复算"},
+     "count": 1, "expect": ["t52_formula_mismatch_rejected", "t73_kind_by_directory_not_prefix"], "rule": "半宽公式复算"},
     {"id": "W53", "target": "scripts/validate_data.py", "test_file": "tests/test_validate_data.py",
      "anchor": "    if declared != d.capability_state:",
      "replace": "    if False:",

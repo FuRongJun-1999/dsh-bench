@@ -432,8 +432,58 @@ def t40():
 
 # --------------------------------------------------------------- 变异清单
 
+
+# --------------------------------------------------------------- 第一批修复（dsh-bench#4/#7/#13）
+
+
+@test("t41_harmful_not_recommended_no_badge")
+def t41():
+    d = V.decide((-10, -6))
+    check(d.capability_state == V.STATE_HARMFUL, "期望帮倒忙")
+    check(d.recommendation == "不推荐", "帮倒忙必须「不推荐」，实得 %s" % d.recommendation)
+    check(not d.worth_trying, "帮倒忙不得进「值得试」")
+    check(d.badges == [], "帮倒忙不得签发推荐徽章")
+    check(d.rank_eligible, "帮倒忙照常进数字排名（明确负贡献不隐藏）")
+
+
+@test("t42_report_status_nonofficial_not_ranked")
+def t42():
+    d = V.decide((6, 10), report_status="方法试验")
+    check(not d.rank_eligible, "非「正式」报告不得进数字排名")
+    check(any("report_status" in n for n in d.notes), "notes 须点名 report_status：%s" % d.notes)
+
+
+@test("t43_invalidation_retires_report")
+def t43():
+    d = V.decide((6, 10), invalidation={"status": "已失效", "reason": "证据撤回"})
+    check(not d.rank_eligible, "已失效报告须退榜")
+    check(d.recommendation == "待复核", "已失效报告推荐须为待复核，实得 %s" % d.recommendation)
+
+
+@test("t44_evidence_ok_false_reaches_pending")
+def t44():
+    d = V.decide((6, 10), evidence_ok=False)
+    check(d.capability_state == V.STATUS_PENDING, "缺必要证据 → 待验证/待修复，实得 %s" % d.capability_state)
+    check(d.label_kind == V.LK_REFUSED, "拒绝分析档位")
+    check(not d.rank_eligible, "缺证据不得进排名")
+
 MUTATIONS = [
     # --- §7 边界表逐行 ---
+    {"id": "V41", "target": "scripts/verdict.py", "test_file": "tests/test_verdict.py",
+     "anchor": "    elif state == STATE_HARMFUL:\n        recommendation = \"不推荐\"",
+     "replace": "    elif state == STATE_HARMFUL:\n        recommendation = \"可推荐\"",
+     "count": 1, "expect": ["t41_harmful_not_recommended_no_badge"],
+     "rule": "dsh-bench#13：帮倒忙必须不推荐"},
+    {"id": "V42", "target": "scripts/verdict.py", "test_file": "tests/test_verdict.py",
+     "anchor": "    if report_status != \"正式\":\n        rank_eligible = False",
+     "replace": "    if False:\n        rank_eligible = False",
+     "count": 1, "expect": ["t42_report_status_nonofficial_not_ranked"],
+     "rule": "dsh-bench#4：非正式报告退榜"},
+    {"id": "V43", "target": "scripts/verdict.py", "test_file": "tests/test_verdict.py",
+     "anchor": "    elif inv_status and inv_status != \"有效\":\n        recommendation = \"待复核\"",
+     "replace": "    elif inv_status and inv_status != \"已失效\":\n        recommendation = \"待复核\"",
+     "count": 1, "expect": ["t43_invalidation_retires_report"],
+     "rule": "dsh-bench#4：已失效退榜待复核"},
     {"id": "V01", "target": "scripts/verdict.py", "test_file": "tests/test_verdict.py",
      "anchor": "    elif L > a:\n        state = STATE_USEFUL",
      "replace": "    elif L > a + 1:\n        state = STATE_USEFUL",
@@ -442,7 +492,7 @@ MUTATIONS = [
     {"id": "V02", "target": "scripts/verdict.py", "test_file": "tests/test_verdict.py",
      "anchor": "    elif U < -b:\n        state = STATE_HARMFUL",
      "replace": "    elif U < -b - 1:\n        state = STATE_HARMFUL",
-     "count": 1, "expect": ["t02_boundary_neg10_neg6_harmful"],
+     "count": 1, "expect": ["t02_boundary_neg10_neg6_harmful", "t41_harmful_not_recommended_no_badge"],
      "rule": "§7 [-10,-6]→帮倒忙（负向门槛）"},
     {"id": "V03", "target": "scripts/verdict.py", "test_file": "tests/test_verdict.py",
      "anchor": "    elif L > -b and U < a:",
@@ -489,7 +539,7 @@ MUTATIONS = [
     {"id": "V10", "target": "scripts/verdict.py", "test_file": "tests/test_verdict.py",
      "anchor": "    if not algorithm_validated or not evidence_ok or not interval_ok(interval):",
      "replace": "    if not algorithm_validated or not interval_ok(interval):",
-     "count": 1, "expect": ["t10_refuse_missing_evidence"], "rule": "§7 缺必要证据→拒绝分析"},
+     "count": 1, "expect": ["t10_refuse_missing_evidence", "t44_evidence_ok_false_reaches_pending"], "rule": "§7/7 缺必要证据→拒绝分析（分支可达性同点）"},
     {"id": "V11", "target": "scripts/verdict.py", "test_file": "tests/test_verdict.py",
      "anchor": "    return float(L) <= float(U)",
      "replace": "    return True",
@@ -510,10 +560,10 @@ MUTATIONS = [
      "count": 1, "expect": ["t15_security_confirmed_suspend_recommendation"],
      "rule": "§7 已确认严重安全事件⇒暂停推荐"},
     {"id": "V15", "target": "scripts/verdict.py", "test_file": "tests/test_verdict.py",
-     "anchor": "    worth_trying = bool(\n        rank_eligible and not confirmed_severe_security_event and not security_investigation\n    )",
+     "anchor": "    worth_trying = bool(\n        rank_eligible and not confirmed_severe_security_event and not security_investigation\n        and recommendation == \"可推荐\"\n    )",
      "replace": "    worth_trying = bool(rank_eligible)",
-     "count": 1, "expect": ["t16_security_confirmed_not_worth_trying"],
-     "rule": "§7 暂停推荐不进「值得试」入口"},
+     "count": 1, "expect": ["t16_security_confirmed_not_worth_trying", "t41_harmful_not_recommended_no_badge"],
+     "rule": "§7/13 暂停推荐与帮倒忙不进「值得试」入口"},
     {"id": "V16", "target": "scripts/verdict.py", "test_file": "tests/test_verdict.py",
      "anchor": "    if confirmed_severe_security_event:\n        recommendation = \"暂停推荐\"",
      "replace": "    if confirmed_severe_security_event:\n        state = STATE_HARMFUL\n        recommendation = \"暂停推荐\"",

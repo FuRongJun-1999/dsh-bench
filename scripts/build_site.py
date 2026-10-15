@@ -195,11 +195,29 @@ def load_json_dir(d: Path) -> list:
     return items
 
 
-def check_report(report: dict) -> dict:
+def check_report(report: dict, evidence_index: dict = None) -> dict:
     """复算：状态、半宽、成本单价全部从区间/证据算出；不一致即中止。"""
     hits = find_forbidden(report)
     if hits:
         raise BuildError("%s: 出现禁止的手填分数字段 %s" % (report.get("_source"), hits))
+
+    # dsh-bench#2：门槛由平台冻结，报告自带值不一致即中止
+    for key, frozen in (("a", V.A_DEFAULT), ("b", V.B_DEFAULT), ("max_half_width", V.MAX_HALF_WIDTH_DEFAULT)):
+        got = report.get(key)
+        if not isinstance(got, (int, float)) or isinstance(got, bool):
+            raise BuildError("%s: 门槛 %s 缺失或非数值（平台冻结 a=%s / b=%s / max_half_width=%s）" % (report.get("_source"), key, V.A_DEFAULT, V.B_DEFAULT, V.MAX_HALF_WIDTH_DEFAULT))
+        if abs(float(got) - frozen) > 1e-9:
+            raise BuildError("%s: 门槛 %s=%r 由平台冻结为 %s（报告自带门槛即放宽判定）" % (report.get("_source"), key, got, frozen))
+
+    # dsh-bench#7：证据链必须可解析且证据自身通过，否则中止
+    ev_index = evidence_index if evidence_index is not None else {}
+    eid = (report.get("evidence") or {}).get("evidence_id")
+    ev_doc = ev_index.get(eid)
+    if not eid or ev_doc is None:
+        raise BuildError("%s: 证据 %r 悬空（evidence_index 无匹配文件；缺必要证据 → 待验证/待修复，不进排名）" % (report.get("_source"), eid))
+    ev_errors = _validate_evidence_doc(ev_doc)
+    if ev_errors:
+        raise BuildError("%s: 证据 %s 自身校验未通过：%s" % (report.get("_source"), eid, "；".join(ev_errors[:3])))
 
     iv = report.get("interval")
     interval = (float(iv["L"]), float(iv["U"])) if iv else None
@@ -207,9 +225,9 @@ def check_report(report: dict) -> dict:
     ev = report.get("evidence") or {}
     d = V.decide(
         interval,
-        a=float(report["a"]),
-        b=float(report["b"]),
-        max_half_width=float(report["max_half_width"]),
+        a=V.A_DEFAULT,
+        b=V.B_DEFAULT,
+        max_half_width=V.MAX_HALF_WIDTH_DEFAULT,
         install_failed=report.get("install_status") == "安装失败",
         confirmed_severe_security_event=sec.get("status") == "已确认事件",
         security_investigation=sec.get("status") == "调查中",
@@ -218,6 +236,8 @@ def check_report(report: dict) -> dict:
         original_deleted=bool(ev.get("original_deleted")),
         redacted_evidence_sufficient=bool(ev.get("redacted_evidence_sufficient", True)),
         depth=report.get("depth"),
+        report_status=report.get("report_status", "正式"),
+        invalidation=report.get("invalidation"),
     )
     if d.capability_state != report.get("capability_state"):
         raise BuildError(
@@ -235,15 +255,46 @@ def _rel(p: Path) -> str:
         return str(p).replace("\\", "/")
 
 
+_VD_MODULE = None
+
+
+def _load_validate_data():
+    """按路径加载 validate_data（与 load_verdict 同机制；测试导入本模块时 scripts/ 不在 sys.path）。"""
+    global _VD_MODULE
+    if _VD_MODULE is None:
+        spec = importlib.util.spec_from_file_location(
+            "validate_data_for_build", Path(__file__).resolve().parent / "validate_data.py"
+        )
+        mod = importlib.util.module_from_spec(spec)
+        sys.modules[spec.name] = mod
+        spec.loader.exec_module(mod)
+        _VD_MODULE = mod
+    return _VD_MODULE
+
+
+def _validate_evidence_doc(ev_doc: dict) -> list:
+    """跑证据语义校验（dsh-bench#7：证据文件自身 FAIL 须传播到引用它的报告）。"""
+    return _load_validate_data().semantic_evidence(ev_doc, V)
+
+
+def build_evidence_index(data_dir: Path) -> dict:
+    idx = {}
+    for e in load_json_dir(data_dir / "evidence"):
+        if e.get("evidence_id"):
+            idx[e["evidence_id"]] = e
+    return idx
+
+
 def load_data(data_dir: Path, include_examples: bool) -> dict:
-    reports = [check_report(r) for r in load_json_dir(data_dir / "reports")]
+    ev_index = build_evidence_index(data_dir)
+    reports = [check_report(r, ev_index) for r in load_json_dir(data_dir / "reports")]
     examples = []
     if include_examples:
         for p in sorted((data_dir / "examples").glob("report-*.json")):
             r = json.loads(p.read_text(encoding="utf-8"))
             r["_source"] = _rel(p)
             r["_example"] = True
-            examples.append(check_report(r))
+            examples.append(check_report(r, ev_index))
     return {
         "plugins": load_json_dir(data_dir / "plugins"),
         "reports": reports,
@@ -296,8 +347,15 @@ def domain_table(reports: list) -> str:
     for r in sorted(ranked, key=lambda x: -float((x.get("interval") or {}).get("L") or 0)):
         d = r["_decision"]
         iv = r.get("interval") or {}
+        rec_cell = esc(d.recommendation)
+        if d.recommendation == "暂停推荐":
+            rec_cell = '<span class="chip warn">⛔ %s（安全暂停，不进「值得试」）</span>' % esc(d.recommendation)
+        elif d.recommendation == "调查中":
+            rec_cell = '<span class="chip warn">⏳ %s</span>' % esc(d.recommendation)
+        elif d.recommendation == "不推荐":
+            rec_cell = '<span class="chip muted">✕ %s（负贡献）</span>' % esc(d.recommendation)
         rows.append(
-            "<tr><td>%s</td><td>%s</td><td>[%s, %s]</td><td>%s</td><td>%s</td></tr>"
+            "<tr><td>%s</td><td>%s</td><td>[%s, %s]</td><td>%s</td><td>%s</td><td>%s</td></tr>"
             % (
                 esc(r["plugin_id"]),
                 esc(V.STATE_DISPLAY.get(d.capability_state, d.capability_state)),
@@ -305,10 +363,11 @@ def domain_table(reports: list) -> str:
                 esc(show(iv.get("U"))),
                 esc(show(r.get("b0_score"))),
                 esc(show(r.get("p_score"))),
+                rec_cell,
             )
         )
     html_ranked = (
-        "<table><thead><tr><th>插件</th><th>结论</th><th>区间</th><th>不装</th><th>装了</th></tr></thead><tbody>"
+        "<table><thead><tr><th>插件</th><th>结论</th><th>区间</th><th>不装</th><th>装了</th><th>推荐</th></tr></thead><tbody>"
         + "".join(rows)
         + "</tbody></table>"
         if rows
@@ -383,7 +442,7 @@ def build(out_dir: Path, data: dict) -> list:
         '<a class="entry" href="%s"><strong>%s</strong><span>%s</span></a>' % (href, title, desc)
         for href, title, desc in [
             ("domains.html", "我想干什么", "按能力域看：记忆、工具、安全边界……"),
-            ("domains.html", "哪些值得试", "只列进了排名和推荐徽章的结果。"),
+            ("worth_trying.html", "哪些值得试", "只列通过推荐资格（worth_trying）的结果；安全暂停与调查中不在此列。"),
             ("reports.html", "哪些有坑", "安全提醒、已确认事件和更正记录。"),
             ("method.html", "怎么测的", "方法、题目、判分程序和局限。"),
         ]
@@ -434,7 +493,7 @@ def build(out_dir: Path, data: dict) -> list:
         ) % (
             esc(show(r.get("b0_score"))), esc(show(r.get("p_score"))), esc(show(r.get("delta"))),
             esc(show(iv.get("L"))), esc(show(iv.get("U"))),
-            esc(show(r.get("half_width"))), esc(r["max_half_width"]),
+            esc(show(r.get("half_width"))), esc(V.MAX_HALF_WIDTH_DEFAULT),
             esc(show(r.get("scenario_count"))), esc(show(r.get("rerun_count"))),
             esc(r["install_status"]), "是" if d.rank_eligible else "否", esc(d.recommendation),
         )
@@ -493,7 +552,7 @@ def build(out_dir: Path, data: dict) -> list:
         )
         body = render(
             "report.html",
-            title="%s · %s" % (r["plugin_id"], r["domain"]),
+            title=esc("%s · %s" % (r["plugin_id"], r["domain"])),
             state_display=esc(V.STATE_DISPLAY.get(d.capability_state, d.capability_state)),
             state_plain=esc(V.STATE_PLAIN.get(d.capability_state, "")),
             flags="".join(
@@ -517,7 +576,7 @@ def build(out_dir: Path, data: dict) -> list:
             detail=detail,
         )
         name = "report-%s.html" % slug(r["report_id"])
-        (out_dir / name).write_text(page("%s · 报告 · 插件测评站" % r["plugin_id"], body, rbanner), encoding="utf-8")
+        (out_dir / name).write_text(page("%s · 报告 · 插件测评站" % esc(r["plugin_id"]), body, rbanner), encoding="utf-8")
         written.append(name)
 
     # 插件页
@@ -546,7 +605,7 @@ def build(out_dir: Path, data: dict) -> list:
             reports="<ul class=\"cards\">%s</ul>" % ("".join(report_card(r) for r in prs) or "<li>还没有报告。</li>"),
         )
         name = "plugin-%s.html" % slug(p["plugin_id"])
-        (out_dir / name).write_text(page("%s · 插件 · 插件测评站" % p["name"], body, banner), encoding="utf-8")
+        (out_dir / name).write_text(page("%s · 插件 · 插件测评站" % esc(p["name"]), body, banner), encoding="utf-8")
         written.append(name)
 
     # 各域榜
@@ -567,6 +626,17 @@ def build(out_dir: Path, data: dict) -> list:
                   body="<ul class=\"cards\">%s</ul>" % ("".join(report_card(r) for r in all_reports) or "<li>还没有报告。</li>"))
     (out_dir / "reports.html").write_text(page("全部报告 · 插件测评站", body, banner), encoding="utf-8")
     written.append("reports.html")
+
+    # 值得试专页（dsh-bench#5：判定层的 worth_trying 必须落到页面）
+    wt = [r for r in all_reports if r["_decision"].worth_trying]
+    wt_body = render(
+        "list.html",
+        title="值得试",
+        intro="<p>只列通过推荐资格的结果：进数字排名、无安全暂停、不在调查中。「帮倒忙」不推荐、不在此列。已失效（invalidation）与方法试验等非正式报告不进排名，自然不在此列。</p>",
+        body='<ul class="cards">%s</ul>' % ("".join(report_card(r) for r in wt) or "<p>暂时没有值得试的结果。</p>"),
+    )
+    (out_dir / "worth_trying.html").write_text(page("值得试 · 插件测评站", wt_body, banner), encoding="utf-8")
+    written.append("worth_trying.html")
 
     # 方法页
     (out_dir / "method.html").write_text(
@@ -627,8 +697,26 @@ def main(argv=None) -> int:
     ap.add_argument("--official-only", action="store_true", help="不包含 data/examples 的演示数据")
     args = ap.parse_args(argv)
 
+    # 发布闸（dsh-bench#3）：构建前先跑校验器，任一 FAIL 即中止。
+    # 口径：语义复核（公式/门槛/证据链/状态/分数/时钟）**任何构建都跑**；
+    # release 专属检查（只收「正式」、拒示例、插件测过深度）只在 --official-only 对 reports/ 施加。
+    _VD = _load_validate_data()
+    data_dir_path = Path(args.data_dir)
+    gate_fail = 0
+    for sub, release in (("reports", args.official_only), ("plugins", False), ("evidence", False), ("ledger", False)):
+        for p in sorted((data_dir_path / sub).glob("*.json")):
+            ok, errs = _VD.validate_file(p, V, release=release)
+            if not ok:
+                gate_fail += 1
+                print("[发布闸] FAIL %s/%s" % (sub, p.name), file=sys.stderr)
+                for e in errs:
+                    print("        - %s" % e, file=sys.stderr)
+    if gate_fail:
+        print("构建中止（发布闸：%d 件未通过）" % gate_fail, file=sys.stderr)
+        return 2
+
     try:
-        data = load_data(Path(args.data_dir), include_examples=not args.official_only)
+        data = load_data(data_dir_path, include_examples=not args.official_only)
     except BuildError as exc:
         print("构建中止（fail-closed）：%s" % exc, file=sys.stderr)
         return 2

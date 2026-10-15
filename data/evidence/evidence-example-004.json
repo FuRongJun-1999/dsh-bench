@@ -1,0 +1,150 @@
+{
+  "schema_version": "1.0.0",
+  "evidence_id": "ev-example-004",
+  "experiment_id": "exp-example-004",
+  "analysis_id": "ana-example-004",
+  "manifest": {
+    "protocol_hash": "8dd51cbf75b259c5dabfdb928eb112364231b5d8f9f580759534e5d78a34d849",
+    "taskset_hash": "98789523c6a11728f3e1d0da79d9b771501c08ba4947938760beb2a3abefcba7",
+    "scorer_hash": "a669236b5f4b3b5414baff920f78411fdf303b0c286a1dbfa1e1a05b57f41507",
+    "environment_id": "env-example-001",
+    "plugin_identity": {
+      "form": "源码版",
+      "ref": "example/example-memory-plugin@0.0.0-example",
+      "observable": true
+    },
+    "sample_plan": {
+      "independent_scenarios": 8,
+      "reruns_per_scenario": 3
+    },
+    "scenario_groups": [
+      "场景 A",
+      "场景 B"
+    ],
+    "order_seed": 20261001,
+    "budget": {
+      "tokens": 0,
+      "money": 12,
+      "wall_clock_minutes": 180
+    },
+    "thresholds": {
+      "a": 5,
+      "b": 5,
+      "max_half_width": 5
+    },
+    "stop_rule": {
+      "fixed_sample": true,
+      "external_fault_rerun_cap": 2
+    },
+    "disclosure": "无利益关系（示例）。"
+  },
+  "protocol_hash": "8dd51cbf75b259c5dabfdb928eb112364231b5d8f9f580759534e5d78a34d849",
+  "taskset_manifest_hash": "98789523c6a11728f3e1d0da79d9b771501c08ba4947938760beb2a3abefcba7",
+  "scorer_hash": "a669236b5f4b3b5414baff920f78411fdf303b0c286a1dbfa1e1a05b57f41507",
+  "environment": {
+    "environment_id": "env-example-001",
+    "os": "示例 OS",
+    "host_version": "example-host-1.0",
+    "model": "example-model-v1",
+    "model_version": "v1",
+    "sampling": "temperature=0",
+    "dependency_lock": "example-lock-v0",
+    "permissions": [
+      "读工作区文件"
+    ],
+    "external_services": []
+  },
+  "pairs": [
+    {
+      "pair_id": "pair-001",
+      "scenario_id": "场景 A",
+      "b0_run": "run-001",
+      "p_run": "run-002"
+    }
+  ],
+  "runs": [
+    {
+      "run_id": "run-001",
+      "pair_id": "pair-001",
+      "scenario_id": "场景 A",
+      "condition": "B0",
+      "time": "2026-10-01T10:00:00",
+      "snapshot_check": {
+        "restored": true,
+        "independent_check": "pass"
+      },
+      "validity": {
+        "valid": true,
+        "reason": ""
+      },
+      "costs": {
+        "money": 4
+      }
+    },
+    {
+      "run_id": "run-002",
+      "pair_id": "pair-001",
+      "scenario_id": "场景 A",
+      "condition": "P",
+      "time": "2026-10-01T10:20:00",
+      "snapshot_check": {
+        "restored": true,
+        "independent_check": "pass"
+      },
+      "validity": {
+        "valid": true,
+        "reason": ""
+      },
+      "costs": {
+        "money": 6
+      }
+    }
+  ],
+  "analysis": {
+    "analysis_id": "ana-example-001",
+    "method": "配对差值 percentile bootstrap（按场景聚合后重采样场景）",
+    "seed": 20261001,
+    "rng": "python random.Random(seed)",
+    "library_versions": {
+      "python": "3.x-stdlib"
+    },
+    "bootstrap_resamples": 10000,
+    "percentile_method": "linear interpolation (numpy default)",
+    "scenario_aggregation": "先在场景内汇总重复运行，再重采样场景",
+    "scores": {
+      "b0_mean": 60,
+      "p_mean": 70
+    },
+    "result": {
+      "L": 6,
+      "U": 10,
+      "half_width": 2
+    }
+  },
+  "review": {
+    "reviewer": "复核者乙",
+    "independent": true,
+    "reviewed_at": "2026-10-02"
+  },
+  "public_redacted": {
+    "redacted": true,
+    "original_retention_days": 90,
+    "original_deleted": false,
+    "redacted_evidence_sufficient": true,
+    "note": "示例：公开件已脱敏；原件受控保存 90 天。"
+  },
+  "minimal_proof": {
+    "correctness": [
+      "输入、实际产物和验收结果已登记"
+    ],
+    "cost": [
+      "计量来源：示例账目"
+    ],
+    "security": [
+      "事件、权限上下文和独立佐证（示例）"
+    ],
+    "state_restore": [
+      "恢复清单 + 独立检查"
+    ]
+  }
+}
