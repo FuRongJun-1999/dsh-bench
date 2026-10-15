@@ -244,6 +244,10 @@
         },
         "events": {
           "type": "array"
+        },
+        "investigation_started_at": {
+          "type": "string",
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
         }
       }
     },
@@ -378,7 +382,36 @@
       }
     },
     "corrections": {
-      "type": "array"
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "to_version",
+          "reason"
+        ],
+        "properties": {
+          "from_version": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "to_version": {
+            "type": "integer"
+          },
+          "date": {
+            "type": "string",
+            "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+          },
+          "reason": {
+            "type": "string",
+            "minLength": 1
+          },
+          "changed_fields": {
+            "type": "array"
+          }
+        }
+      }
     },
     "invalidation": {
       "type": "object"
@@ -539,6 +572,30 @@
           "type": "number"
         }
       }
+    },
+    "total_cost": {
+      "type": "number",
+      "minimum": 0
+    },
+    "baseline_cost": {
+      "type": "number",
+      "minimum": 0
+    },
+    "run_status": {
+      "type": "string",
+      "enum": [
+        "有效",
+        "实验无效"
+      ]
+    },
+    "untestable_reason": {
+      "type": "string",
+      "enum": [
+        "",
+        "安装失败",
+        "任务不适用",
+        "环境不支持"
+      ]
     }
   }
 }

@@ -467,6 +467,41 @@ def t44():
     check(d.label_kind == V.LK_REFUSED, "拒绝分析档位")
     check(not d.rank_eligible, "缺证据不得进排名")
 
+
+# --------------------------------------------------------------- 第二批 2a（#16G1/#12①/#19J3）
+
+
+@test("t45_g1_security_survives_early_return")
+def t45():
+    d = V.decide(install_failed=True, confirmed_severe_security_event=True)
+    check(d.capability_state == V.STATE_UNTESTABLE, "能力结论保留没法测")
+    check(d.recommendation == "暂停推荐", "无法测路径遇已确认安全事件须暂停推荐，实得 %s" % d.recommendation)
+    check(any("能力结果保留" in n for n in d.notes), "notes 须保留能力结果说明")
+    d2 = V.decide((6, 10), depth=V.DEPTH_FAST, security_investigation=True)
+    check(d2.recommendation == "调查中", "快测路径遇调查中须标调查中，实得 %s" % d2.recommendation)
+    d3 = V.decide((6, 10), evidence_ok=False, confirmed_severe_security_event=True)
+    check(d3.recommendation == "暂停推荐", "拒绝分析路径遇已确认事件须暂停推荐，实得 %s" % d3.recommendation)
+
+
+@test("t46_scenario_count_gates_ranking")
+def t46():
+    d = V.decide((6, 10), scenario_count=1)
+    check(not d.rank_eligible, "单场景不得生成跨场景正式结论")
+    check(any("场景数" in n for n in d.notes), "notes 须点名场景数")
+    d2 = V.decide((6, 10), scenario_count=5)
+    check(d2.rank_eligible, "多场景照常进排名")
+
+
+@test("t47_audit_badge_derailed_when_threats_untested")
+def t47():
+    threats = {k: "未测" for k in V.SECURITY_SIX_THREATS}
+    d = V.decide((6, 10), depth=V.DEPTH_AUDIT, security_six_threats=threats)
+    check(d.badges == ["标准测评·真有用"], "六类全未测的深度审计徽章须降标准档，实得 %s" % d.badges)
+    check(any("深度审计（指定 0/6 项）" in n for n in d.notes), "notes 须注明覆盖范围")
+    threats2 = {k: "已验证通过" for k in threats}
+    d2 = V.decide((6, 10), depth=V.DEPTH_AUDIT, security_six_threats=threats2)
+    check(d2.badges == ["深度审计·真有用"], "六类全测的深度审计照常签发深度档徽章，实得 %s" % d2.badges)
+
 MUTATIONS = [
     # --- §7 边界表逐行 ---
     {"id": "V41", "target": "scripts/verdict.py", "test_file": "tests/test_verdict.py",
@@ -484,10 +519,25 @@ MUTATIONS = [
      "replace": "    elif inv_status and inv_status != \"已失效\":\n        recommendation = \"待复核\"",
      "count": 1, "expect": ["t43_invalidation_retires_report"],
      "rule": "dsh-bench#4：已失效退榜待复核"},
+    {"id": "V45", "target": "scripts/verdict.py", "test_file": "tests/test_verdict.py",
+     "anchor": "    if confirmed_severe_security_event:\n        early_rec = \"暂停推荐\"",
+     "replace": "    if False:\n        early_rec = \"暂停推荐\"",
+     "count": 1, "expect": ["t45_g1_security_survives_early_return"],
+     "rule": "dsh-bench#16 G1：安全通道覆盖提前返回路径"},
+    {"id": "V46", "target": "scripts/verdict.py", "test_file": "tests/test_verdict.py",
+     "anchor": "    if scenario_count is not None and not cross_scenario_claim_allowed(int(scenario_count)):\n        rank_eligible = False",
+     "replace": "    if False:\n        rank_eligible = False",
+     "count": 1, "expect": ["t46_scenario_count_gates_ranking"],
+     "rule": "dsh-bench#12①：单场景退出数字排名"},
+    {"id": "V47", "target": "scripts/verdict.py", "test_file": "tests/test_verdict.py",
+     "anchor": "                badge_depth = DEPTH_STANDARD",
+     "replace": "                badge_depth = depth",
+     "count": 1, "expect": ["t47_audit_badge_derailed_when_threats_untested"],
+     "rule": "dsh-bench#19 J3：有未测专项的深度审计徽章降标准档"},
     {"id": "V01", "target": "scripts/verdict.py", "test_file": "tests/test_verdict.py",
      "anchor": "    elif L > a:\n        state = STATE_USEFUL",
      "replace": "    elif L > a + 1:\n        state = STATE_USEFUL",
-     "count": 1, "expect": ["t01_boundary_6_10_useful"],
+     "count": 1, "expect": ["t01_boundary_6_10_useful", "t46_scenario_count_gates_ranking", "t47_audit_badge_derailed_when_threats_untested"],
      "rule": "§7 [6,10]→真有用（正向门槛）"},
     {"id": "V02", "target": "scripts/verdict.py", "test_file": "tests/test_verdict.py",
      "anchor": "    elif U < -b:\n        state = STATE_HARMFUL",
@@ -552,7 +602,7 @@ MUTATIONS = [
     {"id": "V13", "target": "scripts/verdict.py", "test_file": "tests/test_verdict.py",
      "anchor": "        untestable_reasons.append(\"安装失败\")",
      "replace": "        pass",
-     "count": 1, "expect": ["t13_install_failed_untestable_and_install_recorded"],
+     "count": 1, "expect": ["t13_install_failed_untestable_and_install_recorded", "t45_g1_security_survives_early_return"],
      "rule": "§7 安装失败⇒没法测＋安装失败"},
     {"id": "V14", "target": "scripts/verdict.py", "test_file": "tests/test_verdict.py",
      "anchor": "    if confirmed_severe_security_event:\n        recommendation = \"暂停推荐\"",
@@ -644,7 +694,7 @@ MUTATIONS = [
     {"id": "V33", "target": "scripts/verdict.py", "test_file": "tests/test_verdict.py",
      "anchor": "    return scenario_count >= 2",
      "replace": "    return True",
-     "count": 1, "expect": ["t33_cross_scenario_claim_guard"], "rule": "§7 场景只有一个"},
+     "count": 1, "expect": ["t33_cross_scenario_claim_guard", "t46_scenario_count_gates_ranking"], "rule": "§7 场景只有一个"},
     {"id": "V34", "target": "scripts/verdict.py", "test_file": "tests/test_verdict.py",
      "anchor": "    return [k for k in required if manifest.get(k) in (None, \"\", [])]",
      "replace": "    return []",

@@ -23,6 +23,8 @@ from __future__ import annotations
 import argparse
 import importlib.util
 import json
+import math
+import re
 import sys
 from datetime import date, datetime, timedelta
 from pathlib import Path
@@ -143,7 +145,16 @@ def find_forbidden(obj, path="$") -> list:
 
 
 def _num(x):
-    return float(x) if isinstance(x, (int, float)) and not isinstance(x, bool) else None
+    return float(x) if isinstance(x, (int, float)) and not isinstance(x, bool) and math.isfinite(float(x)) else None
+
+
+def _reject_constant(x):
+    """dsh-bench#17 H1：JSON 的 NaN / Infinity 非标准字面量，一律拒绝。"""
+    raise ValueError("非标准数值字面量 %r（NaN/Infinity 不得进入数据）" % x)
+
+
+def _load_json_strict(text: str):
+    return json.loads(text, parse_constant=_reject_constant)
 
 
 def semantic_report(report: dict, verdict, evidence_ok: bool = True) -> list:
@@ -189,6 +200,11 @@ def semantic_report(report: dict, verdict, evidence_ok: bool = True) -> list:
     install_failed = report.get("install_status") == "安装失败"
     sec = report.get("security") or {}
     ev = report.get("evidence") or {}
+    # dsh-bench#8②：run_status / untestable_reason 如实传给 decide（没法测须分别记录原因）
+    run_valid = report.get("run_status", "有效") != "实验无效"
+    untestable_reason = report.get("untestable_reason") or ""
+    task_not_applicable = untestable_reason == "任务不适用"
+    env_unsupported = untestable_reason == "环境不支持"
     d = verdict.decide(
         (L, U) if (L is not None and U is not None) else None,
         a=verdict.A_DEFAULT,
@@ -205,6 +221,11 @@ def semantic_report(report: dict, verdict, evidence_ok: bool = True) -> list:
         report_status=report.get("report_status", "正式"),
         invalidation=report.get("invalidation"),
         evidence_ok=evidence_ok,
+        run_valid=run_valid,
+        task_not_applicable=task_not_applicable,
+        env_unsupported=env_unsupported,
+        scenario_count=report.get("scenario_count"),
+        security_six_threats=(report.get("security_scope") or {}).get("threats") or None,
     )
     declared = report.get("capability_state")
     if declared != d.capability_state:
@@ -214,6 +235,56 @@ def semantic_report(report: dict, verdict, evidence_ok: bool = True) -> list:
         )
     if report.get("precision_ok") is not None and d.precision_ok != report.get("precision_ok"):
         errors.append("precision_ok 与复算不符：声明 %r，实为 %r" % (report.get("precision_ok"), d.precision_ok))
+
+    # 2c) 安全通道对账（dsh-bench#16 G2/G3/G4）--------------------------
+    events = sec.get("events") or []
+    if events and sec.get("status") == "未发现问题":
+        errors.append("安全对账不符：events 记录了 %d 条事件，status 却为「未发现问题」" % len(events))
+    if sec.get("status") == "调查中":
+        started = sec.get("investigation_started_at")
+        if not started:
+            errors.append("调查中须填 investigation_started_at（起始日期），否则无法判断 14 天期限")
+        else:
+            try:
+                sd = datetime.strptime(str(started), "%Y-%m-%d").date()
+                age = (date.today() - sd).days
+                if age > 14:
+                    errors.append("调查已 %d 天（起于 %s）：超过 14 天期限，须升级处置或关闭调查" % (age, started))
+            except ValueError:
+                errors.append("investigation_started_at 格式非法：%r（须 YYYY-MM-DD）" % started)
+    rv = (report.get("review") or {}).get("reviewed_at")
+    if rv:
+        try:
+            rd_ = datetime.strptime(str(rv), "%Y-%m-%d").date()
+            if ta and isinstance(ta, str):
+                td = datetime.strptime(ta, "%Y-%m-%d").date()
+                if rd_ < td:
+                    errors.append("reviewed_at %s 早于 tested_at %s（复核不得早于测完）" % (rv, ta))
+        except ValueError:
+            errors.append("reviewed_at 格式非法：%r（须 YYYY-MM-DD）" % rv)
+
+    # 2d) 更正记录（dsh-bench#22 N2）-----------------------------------
+    corr = report.get("corrections") or []
+    ver = report.get("report_version")
+    for c_ in corr:
+        if not isinstance(c_, dict) or not c_.get("reason") or c_.get("to_version") is None:
+            errors.append("更正记录须为对象且含 to_version 与 reason：%r" % (c_,))
+            break
+    if isinstance(ver, int) and ver > 1:
+        if not any(isinstance(c_, dict) and c_.get("to_version") == ver for c_ in corr):
+            errors.append("report_version=%s 但没有 to_version=%s 的更正记录（版本递增须留痕）" % (ver, ver))
+
+    # 2e) 利益关系（dsh-bench#22 N3）-----------------------------------
+    if report.get("report_status", "正式") == "正式" and not (report.get("disclosure") or "").strip():
+        errors.append("正式报告 disclosure 为空：利益关系必须披露（没有就写「无」）")
+
+    # 2f) 人话结论与复算一致（dsh-bench#23 Q2）--------------------------
+    concl = (report.get("human_text") or {}).get("结论") or ""
+    if report.get("depth", verdict.DEPTH_STANDARD) in verdict.RANKING_DEPTHS and concl:
+        words = ("真有用", "帮倒忙", "没啥差别", "还说不准", "没法测")
+        hits = [w for w in words if w in concl]
+        if hits and hits[0] != d.capability_state and d.capability_state in words:
+            errors.append("human_text.结论 写「%s」，与复算状态「%s」不符（人话可以补充，不能反着说）" % (hits[0], d.capability_state))
 
     # 3) 到期日 = 测完 + 90 天
     if not verdict.expiry_consistent(report.get("tested_at"), report.get("expires_at")):
@@ -352,10 +423,20 @@ def semantic_plugin(pl: dict, verdict) -> list:
     return errors
 
 
-def semantic_ledger(led: dict, verdict) -> list:
+def semantic_ledger(led: dict, verdict, actual_published: int = None) -> list:
     errors = []
-    if led.get("tested_count", 0) < led.get("published_reports", 0):
-        errors.append("账本自相矛盾：发布报告数多于已测数")
+    # dsh-bench#22 N5：月份合法、内部大小关系
+    month = str(led.get("month") or "")
+    if not re.fullmatch(r"\d{4}-(0[1-9]|1[0-2])", month):
+        errors.append("账本月份非法：%r（须 YYYY-MM，01–12 月）" % led.get("month"))
+    if led.get("failed_count", 0) > led.get("tested_count", 0):
+        errors.append("账本自相矛盾：失败数 %s > 已测数 %s" % (led.get("failed_count"), led.get("tested_count")))
+    # dsh-bench#12④：published_reports 与实际已发布报告对账
+    if actual_published is not None and led.get("published_reports", 0) != actual_published:
+        errors.append(
+            "账本不对账：published_reports=%s，当月实际正式报告 %d 份（month=%s）"
+            % (led.get("published_reports"), actual_published, month)
+        )
     return errors
 
 
@@ -406,9 +487,11 @@ def validate_file(path: Path, verdict, release: bool = False) -> tuple:
     if not kind:
         return False, ["无法从所在目录推断类型（须位于 reports/、examples/、plugins/、evidence/、ledger/ 之一）"]
     try:
-        data = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError) as exc:
+        data = _load_json_strict(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError, ValueError) as exc:
         return False, ["读取/解析失败：%s" % exc]
+    if not isinstance(data, dict):
+        return False, ["顶层必须是 JSON 对象，实为 %s" % type(data).__name__]
     schema = json.loads((SCHEMA_DIR / KIND_SCHEMA[kind]).read_text(encoding="utf-8"))
     errors = validate_schema(data, schema)
     errors += find_forbidden(data)
@@ -431,7 +514,17 @@ def validate_file(path: Path, verdict, release: bool = False) -> tuple:
         if release and data.get("tested_depth") in (None, "未测", "作者自测"):
             errors.append("发布检查：tested_depth=%r 不足以上能力榜" % data.get("tested_depth"))
     elif kind == "ledger":
-        errors += semantic_ledger(data, verdict)
+        actual = 0
+        rep_dir = path.parent.parent / "reports"
+        if rep_dir.is_dir():
+            for p2 in sorted(rep_dir.glob("*.json")):
+                try:
+                    d2 = _load_json_strict(p2.read_text(encoding="utf-8"))
+                except (OSError, json.JSONDecodeError, ValueError):
+                    continue
+                if d2.get("report_status") == "正式":
+                    actual += 1
+        errors += semantic_ledger(data, verdict, actual_published=actual)
     return (not errors), errors
 
 
@@ -453,13 +546,30 @@ def main(argv=None) -> int:
     data_dir = Path(args.data_dir)
     files = list(iter_data_files(data_dir))
     if not files:
-        print("没有可校验的数据文件（%s）" % data_dir)
-        return 0
+        print("没有可校验的数据文件（%s）——目录为空或路径写错本身即发布异常（fail-closed）" % data_dir)
+        return 1
+
+    # dsh-bench#22 N5：同一月份只能有一份账本
+    seen_months = {}
+    for p in files:
+        if infer_kind(p) == "ledger":
+            try:
+                d3 = _load_json_strict(p.read_text(encoding="utf-8"))
+                m3 = d3.get("month")
+                if m3 in seen_months:
+                    print("FAIL  账本月份重复：%s 同时见于 %s 与 %s" % (m3, seen_months[m3], p.name))
+                    return 1
+                seen_months[m3] = p.name
+            except (OSError, json.JSONDecodeError, ValueError):
+                pass
 
     failed = 0
     for p in files:
-        ok, errors = validate_file(p, verdict, release=args.release)
         rel = p.relative_to(data_dir) if data_dir in p.parents else p
+        try:
+            ok, errors = validate_file(p, verdict, release=args.release)
+        except Exception as exc:  # dsh-bench#17 H3：单文件崩溃不吞掉整批结论
+            ok, errors = False, ["校验器内部异常：%s: %s" % (type(exc).__name__, exc)]
         if ok:
             print("PASS  %s" % rel)
         else:

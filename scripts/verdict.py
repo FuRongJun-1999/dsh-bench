@@ -377,6 +377,8 @@ def decide(
     tool_results: Optional[dict] = None,
     # 方案 §8：深度审计的六类安全专项证据（键=六威胁名）
     security_six_threats: Optional[dict] = None,
+    # 样本量（dsh-bench#12①）：单场景不得生成跨场景正式结论
+    scenario_count: Optional[int] = None,
     # 生命周期（dsh-bench#4）：report_status 与 invalidation 参与排名资格与推荐
     report_status: str = "正式",
     invalidation: Optional[dict] = None,
@@ -442,6 +444,15 @@ def decide(
         untestable_reasons.append("任务不适用")
     if env_unsupported:
         untestable_reasons.append("环境不支持")
+    # 安全独立通道在提前返回路径同样生效（dsh-bench#16 G1）：能力结果保留，推荐按安全状态走
+    early_rec, early_extra = "待复核", []
+    if confirmed_severe_security_event:
+        early_rec = "暂停推荐"
+        early_extra = ["已确认严重安全事件：暂停当前版本推荐；能力结果保留，不改零分、不抹掉。"]
+    elif security_investigation:
+        early_rec = "调查中"
+        early_extra = ["可疑但证据不足：标「调查中」。"]
+
     if untestable_reasons:
         notes.append("能力结论：🚧 没法测（原因：" + "；".join(untestable_reasons) + "）")
         if install_failed:
@@ -453,13 +464,13 @@ def decide(
             capability_delta_concluded=False,
             install_status=install_status,
             rank_eligible=False,
-            recommendation="待复核",
+            recommendation=early_rec,
             worth_trying=False,
             cards=cards,
             tool_four_things=four_things,
             security_scope=scope,
             risk_level=risk,
-            notes=notes,
+            notes=notes + early_extra,
             reasons=["原因：" + "；".join(untestable_reasons) + "，无法取得可判定的能力区间。"],
         )
 
@@ -499,14 +510,14 @@ def decide(
             observed_interval=observed,
             install_status=install_status,
             rank_eligible=False,
-            recommendation="待复核",
+            recommendation=early_rec,
             worth_trying=False,
             badges=[],
             cards=cards,
             tool_four_things=four_things,
             security_scope=scope,
             risk_level=risk,
-            notes=notes,
+            notes=notes + early_extra,
             reasons=["档位「%s」按方案 §8 只出「能力试跑（观察结果，不进榜）」，不产出五状态能力结论。" % DEPTH_FAST],
         )
 
@@ -532,13 +543,13 @@ def decide(
             capability_delta_concluded=False,
             install_status=install_status,
             rank_eligible=False,
-            recommendation="待复核",
+            recommendation=early_rec,
             worth_trying=False,
             cards=cards,
             tool_four_things=four_things,
             security_scope=scope,
             risk_level=risk,
-            notes=["拒绝分析：不生成数值区间和正式能力标签（手册 §2.4 第 3 条）。"],
+            notes=["拒绝分析：不生成数值区间和正式能力标签（手册 §2.4 第 3 条）。"] + early_extra,
             reasons=refusal,
         )
 
@@ -606,6 +617,9 @@ def decide(
         notes.append("档位「%s」不进能力榜。" % depth)
 
     # --- 7b. 生命周期：report_status 与 invalidation 参与排名资格（dsh-bench#4）---
+    if scenario_count is not None and not cross_scenario_claim_allowed(int(scenario_count)):
+        rank_eligible = False
+        notes.append("场景数 %s < 2：不得生成跨场景正式结论，退出数字排名（单场景仅作观察记录）。" % scenario_count)
     if report_status != "正式":
         rank_eligible = False
         notes.append("report_status=%r：非「正式」报告不进数字排名（方法试验／待验证照常展示）。" % report_status)
@@ -643,7 +657,15 @@ def decide(
 
     badges = []
     if rank_eligible and recommendation == "可推荐":
-        badges = ["%s·%s" % (depth, state)]
+        badge_depth = depth
+        if depth == DEPTH_AUDIT and scope.get("applicable"):
+            threats = scope.get("threats") or {}
+            untested_n = sum(1 for v in threats.values() if v in ("未测", "", None))
+            if threats and untested_n:
+                # dsh-bench#19 J3：有未测专项的「深度审计」按标准测评档签发徽章，并注明覆盖范围
+                badge_depth = DEPTH_STANDARD
+                notes.append("深度审计（指定 %d/%d 项）：%d 项专项未测，徽章按标准测评档签发。" % (len(threats) - untested_n, len(threats), untested_n))
+        badges = ["%s·%s" % (badge_depth, state)]
     elif state in FIVE_STATES:
         notes.append("徽章已失效或不签发（未满足排名/推荐条件）。")
 
@@ -709,6 +731,9 @@ def unit_success_cost(total_cost: Optional[float], successes: Optional[int]) -> 
         }
     if successes < 0:
         return {"value": None, "display": "不适用：成功数为负，数据无效", "reason": "输入无效。"}
+    if total_cost < 0:
+        # dsh-bench#17 H2：负花费不是任何计量能得到的值（手册 §5）
+        return {"value": None, "display": "数据无效：总花费为负", "reason": "负花费不可能来自计量；手册 §5 禁止用负比值暗示划算。"}
     return {"value": total_cost / successes, "display": "%.4f" % (total_cost / successes)}
 
 

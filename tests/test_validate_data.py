@@ -452,6 +452,150 @@ def t75():
     check(not ok and any("自身校验未通过" in e for e in errors), "证据 FAIL 须传播到引用它的报告：%s" % errors_text(errors))
 
 
+
+# --------------------------------------------------------------- 第二批 2a（#8②/#16/#17/#22/#23/#12④）
+
+
+@test("t76_run_status_and_untestable_reason_accepted")
+def t76():
+    verdict = VD.load_verdict()
+    r = base_report()
+    r["capability_state"] = "没法测"
+    r["install_status"] = "安装成功"
+    r["untestable_reason"] = "环境不支持"
+    r["interval"] = None
+    r["half_width"] = None
+    r["precision_ok"] = False
+    r["b0_score"] = r["p_score"] = r["delta"] = None
+    r["human_text"]["结论"] = "没法测（环境不支持）。"
+    ok, errors = write_and_validate(r)
+    check(ok, "环境不支持如实填写须通过：%s" % errors_text(errors))
+    r2 = base_report()
+    r2["capability_state"] = "实验无效/待重跑"
+    r2["run_status"] = "实验无效"
+    r2["precision_ok"] = None if False else r2["precision_ok"]
+    r2["precision_ok"] = False
+    r2["human_text"]["结论"] = "实验无效/待重跑。"
+    ok2, errors2 = write_and_validate(r2)
+    check(ok2, "实验无效如实填写须通过：%s" % errors_text(errors2))
+
+
+@test("t77_security_events_status_reconciled")
+def t77():
+    verdict = VD.load_verdict()
+    r = base_report()
+    r["security"]["status"] = "未发现问题"
+    r["security"]["events"] = [{"severity": "关键", "desc": "x"}]
+    ok, errors = write_and_validate(r)
+    check(not ok and any("安全对账不符" in e for e in errors), "events 与 status 须对账：%s" % errors_text(errors))
+
+
+@test("t78_investigation_requires_started_at")
+def t78():
+    verdict = VD.load_verdict()
+    r = base_report()
+    r["security"]["status"] = "调查中"
+    r["security"]["investigation_started_at"] = "2026-01-01"
+    ok, errors = write_and_validate(r)
+    check(not ok and any("超过 14 天" in e for e in errors), "调查超期须被点名：%s" % errors_text(errors))
+    r2 = base_report()
+    r2["security"]["status"] = "调查中"
+    ok2, errors2 = write_and_validate(r2)
+    check(not ok2 and any("investigation_started_at" in e for e in errors2), "调查中缺起始日期须被拒：%s" % errors_text(errors2))
+
+
+@test("t79_reviewed_at_order_enforced")
+def t79():
+    verdict = VD.load_verdict()
+    r = base_report()
+    r["review"]["reviewed_at"] = "2020-01-01"
+    ok, errors = write_and_validate(r)
+    check(not ok and any("早于 tested_at" in e for e in errors), "复核早于测完须被拒：%s" % errors_text(errors))
+
+
+@test("t80_negative_cost_rejected")
+def t80():
+    r = base_report()
+    r["cost"]["total_cost"] = -12
+    ok, errors = write_and_validate(r)
+    check(not ok, "负总成本须被拒：%s" % errors_text(errors))
+
+
+@test("t81_nan_literal_rejected")
+def t81():
+    tmp = Path(tempfile.mkdtemp(prefix="lpb_nan_"))
+    d = tmp / "reports"; d.mkdir()
+    ev = tmp / "evidence"; ev.mkdir()
+    (ev / "evidence-example-001.json").write_text((ROOT / "data/evidence/evidence-example-001.json").read_text(encoding="utf-8"), encoding="utf-8")
+    import re as _re
+    raw = _re.sub(r'"half_width":\s*[0-9.]+', '"half_width": NaN', (ROOT / "data/examples/report-example-memory.json").read_text(encoding="utf-8"), count=1)
+    (d / "report-case.json").write_text(raw, encoding="utf-8")
+    ok, errors = VD.validate_file(d / "report-case.json", VD.load_verdict())
+    check(not ok and any("NaN" in e or "非标准数值" in e for e in errors), "NaN 字面量须被拒：%s" % errors_text(errors))
+
+
+@test("t82_broken_file_does_not_silence_batch")
+def t82():
+    verdict = VD.load_verdict()
+    tmp = Path(tempfile.mkdtemp(prefix="lpb_h3_"))
+    d = tmp / "reports"; d.mkdir()
+    (d / "report-bad.json").write_text("[1, 2]", encoding="utf-8")
+    (d / "report-good.json").write_text(json.dumps(base_report(), ensure_ascii=False), encoding="utf-8")
+    (tmp / "evidence").mkdir()
+    (tmp / "evidence" / "evidence-example-001.json").write_text((ROOT / "data/evidence/evidence-example-001.json").read_text(encoding="utf-8"), encoding="utf-8")
+    rc = VD.main(["--data-dir", str(tmp)])
+    check(rc == 1, "坏文件存在时退出码须非 0")
+    ok, errors = VD.validate_file(d / "report-good.json", verdict)
+    check(ok, "合格报告独立校验须通过：%s" % errors_text(errors))
+
+
+@test("t83_corrections_structure_enforced")
+def t83():
+    verdict = VD.load_verdict()
+    r = base_report()
+    r["report_version"] = 3
+    r["corrections"] = []
+    ok, errors = write_and_validate(r)
+    check(not ok and any("更正记录" in e for e in errors), "第 3 版无更正记录须被拒：%s" % errors_text(errors))
+    r2 = base_report()
+    r2["corrections"] = [123]
+    ok2, errors2 = write_and_validate(r2)
+    check(not ok2 and any("更正记录须为对象" in e for e in errors2), "非对象更正须被拒：%s" % errors_text(errors2))
+
+
+@test("t84_disclosure_required_for_official")
+def t84():
+    verdict = VD.load_verdict()
+    r = base_report()
+    r["report_status"] = "正式"
+    r["disclosure"] = ""
+    ok, errors = write_and_validate(r)
+    check(not ok and any("disclosure" in e for e in errors), "正式报告空利益关系须被拒：%s" % errors_text(errors))
+
+
+@test("t85_ledger_month_and_reconciliation")
+def t85():
+    verdict = VD.load_verdict()
+    led = json.loads((ROOT / "data/ledger/ledger-2026-10.json").read_text(encoding="utf-8"))
+    bad = dict(led, month="2026-13")
+    errors = VD.semantic_ledger(bad, verdict, actual_published=0)
+    check(any("月份非法" in e for e in errors), "月份 2026-13 须被拒：%s" % errors_text(errors))
+    bad2 = dict(led, failed_count=9, tested_count=4)
+    errors2 = VD.semantic_ledger(bad2, verdict, actual_published=0)
+    check(any("失败数" in e for e in errors2), "failed>tested 须被拒：%s" % errors_text(errors2))
+    bad3 = dict(led, published_reports=5)
+    errors3 = VD.semantic_ledger(bad3, verdict, actual_published=0)
+    check(any("账本不对账" in e for e in errors3), "published 与实际不符须被拒：%s" % errors_text(errors3))
+
+
+@test("t86_human_conclusion_must_match_recomputed")
+def t86():
+    verdict = VD.load_verdict()
+    r = base_report()
+    r["human_text"]["结论"] = "❌ 帮倒忙：越用越糟。"
+    ok, errors = write_and_validate(r)
+    check(not ok and any("与复算状态" in e for e in errors), "人话结论与复算不符须被拒：%s" % errors_text(errors))
+
 MUTATIONS = [
     {"id": "W51", "target": "scripts/validate_data.py", "test_file": "tests/test_validate_data.py",
      "anchor": "        for key in schema.get(\"required\", []):",
