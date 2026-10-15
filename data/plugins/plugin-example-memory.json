@@ -14,7 +14,9 @@
   "tested_depth": "标准测评",
   "risk_level": "低",
   "recommendation": "可推荐",
-  "permissions": ["读工作区文件"],
+  "permissions": [
+    "读工作区文件"
+  ],
   "maintainer": {
     "name": "示例作者",
     "response_days": 2,
@@ -27,7 +29,13 @@
   "uninstall_notes": "卸载后删除数据目录即可（示例）。",
   "price_notes": "免费（示例）。",
   "caveats": "示例数据，不要据此做任何决定。",
-  "capabilities": ["跨会话记住上次交代的事", "回源定位到记录"],
+  "capabilities": [
+    "跨会话记住上次交代的事",
+    "回源定位到记录"
+  ],
   "update_log": [],
-  "report_ids": ["example-report-memory-001"]
+  "report_ids": [
+    "example-report-memory-001"
+  ],
+  "install_notes": "示例：解压到插件目录，重启宿主即生效（示例数据）。"
 }

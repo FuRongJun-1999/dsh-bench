@@ -39,7 +39,7 @@ BS = _load("build_site_under_test", "scripts/build_site.py")
 TESTS = []
 
 
-def test(tid):
+def run_case(tid):
     def deco(fn):
         TESTS.append((tid, fn))
         return fn
@@ -85,7 +85,7 @@ def errors_text(errors) -> str:
 # --------------------------------------------------------------- 正例
 
 
-@test("t50_validator_accepts_repo_data")
+@run_case("t50_validator_accepts_repo_data")
 def t50():
     verdict = VD.load_verdict()
     files = sorted((ROOT / "data" / "examples").glob("report-*.json")) + sorted(
@@ -103,7 +103,7 @@ def t50():
 # --------------------------------------------------------------- 各类缺项各自被拒
 
 
-@test("t51_missing_required_field_rejected")
+@run_case("t51_missing_required_field_rejected")
 def t51():
     r = base_report()
     del r["domain"]
@@ -112,7 +112,7 @@ def t51():
     check("domain" in errors_text(errors), "须点名缺哪个字段：%s" % errors_text(errors))
 
 
-@test("t52_formula_mismatch_rejected")
+@run_case("t52_formula_mismatch_rejected")
 def t52():
     r = base_report()
     r["half_width"] = 99
@@ -121,7 +121,7 @@ def t52():
     check("half_width" in errors_text(errors), "须点名公式：%s" % errors_text(errors))
 
 
-@test("t53_handfilled_state_rejected")
+@run_case("t53_handfilled_state_rejected")
 def t53():
     r = base_report()
     r["interval"] = {"L": -2, "U": 2}   # 复算应为「没啥差别」
@@ -131,7 +131,7 @@ def t53():
     check("手填" in errors_text(errors), "须点名成绩/区间/标签禁止手填：%s" % errors_text(errors))
 
 
-@test("t54_expiry_mismatch_rejected")
+@run_case("t54_expiry_mismatch_rejected")
 def t54():
     r = base_report()
     r["expires_at"] = "2027-12-30"
@@ -140,7 +140,7 @@ def t54():
     check("续期" in errors_text(errors), "须点名改日期不算续期：%s" % errors_text(errors))
 
 
-@test("t55_cost_zero_as_number_rejected")
+@run_case("t55_cost_zero_as_number_rejected")
 def t55():
     r = base_report()
     r["cost"]["success_count"] = 0
@@ -151,7 +151,7 @@ def t55():
     check("成本分母" in errors_text(errors), "须点名成本分母：%s" % errors_text(errors))
 
 
-@test("t56_forbidden_total_score_rejected")
+@run_case("t56_forbidden_total_score_rejected")
 def t56():
     r = base_report()
     r["total_score"] = 88
@@ -160,7 +160,7 @@ def t56():
     check("禁止" in errors_text(errors), "须点名禁止总分/星级：%s" % errors_text(errors))
 
 
-@test("t57_review_not_independent_rejected")
+@run_case("t57_review_not_independent_rejected")
 def t57():
     r = base_report()
     r["review"]["independent"] = False
@@ -173,7 +173,7 @@ def t57():
     check(not ok2, "执行与复核同一人必须被拒")
 
 
-@test("t58_release_mode_rejects_trial")
+@run_case("t58_release_mode_rejects_trial")
 def t58():
     r = base_report()
     ok, errors = write_and_validate(r, release=True)
@@ -181,7 +181,7 @@ def t58():
     check("report_status" in errors_text(errors), "须点名发布检查（report_status）：%s" % errors_text(errors))
 
 
-@test("t60_schema_version_mismatch_rejected")
+@run_case("t60_schema_version_mismatch_rejected")
 def t60():
     r = base_report()
     r["schema_version"] = "0.9.0"
@@ -190,7 +190,7 @@ def t60():
     check("schema_version" in errors_text(errors), "须点名 schema_version：%s" % errors_text(errors))
 
 
-@test("t61_plugin_identity_unobservable_needs_note")
+@run_case("t61_plugin_identity_unobservable_needs_note")
 def t61():
     p = ROOT / "data" / "plugins" / "plugin-example-tool.json"
     data = json.loads(p.read_text(encoding="utf-8"))
@@ -204,7 +204,7 @@ def t61():
     check("无 commit 可观测" in errors_text(errors), "须点名该约束：%s" % errors_text(errors))
 
 
-@test("t62_evidence_minimal_proof_missing")
+@run_case("t62_evidence_minimal_proof_missing")
 def t62():
     p = ROOT / "data" / "evidence" / "evidence-example-001.json"
     data = json.loads(p.read_text(encoding="utf-8"))
@@ -218,7 +218,7 @@ def t62():
     check("state_restore" in errors_text(errors), "须点名缺哪项：%s" % errors_text(errors))
 
 
-@test("t63_privacy_redaction_required")
+@run_case("t63_privacy_redaction_required")
 def t63():
     r = base_report()
     r["evidence"]["public_redacted"] = False
@@ -237,7 +237,7 @@ def _legal_ev_index():
     )}
 
 
-@test("t59_build_rejects_handfilled_state")
+@run_case("t59_build_rejects_handfilled_state")
 def t59():
     r = base_report()
     r["capability_state"] = "帮倒忙"   # 与区间复算不符
@@ -248,7 +248,7 @@ def t59():
         check("禁止手填" in str(exc), "中止理由须点名禁止手填：%s" % exc)
 
 
-@test("t64_build_rejects_total_score")
+@run_case("t64_build_rejects_total_score")
 def t64():
     r = base_report()
     r["total_score"] = 88
@@ -259,7 +259,7 @@ def t64():
         check("total_score" in str(exc), "中止理由须点名字段：%s" % exc)
 
 
-@test("t65_site_has_no_total_score_and_keeps_boards_separate")
+@run_case("t65_site_has_no_total_score_and_keeps_boards_separate")
 def t65():
     import re
 
@@ -276,7 +276,7 @@ def t65():
     check("不能手填" in html, "报告页须注明数字从证据自动算出")
 
 
-@test("t66_domains_page_excludes_unranked")
+@run_case("t66_domains_page_excludes_unranked")
 def t66():
     data = BS.load_data(ROOT / "data", include_examples=True)
     out = Path(tempfile.mkdtemp(prefix="lpb_site2_"))
@@ -291,12 +291,12 @@ def t66():
     for r in all_reports:
         if not r["_decision"].rank_eligible:
             check(
-                "<li>%s：%s（%s）</li>" % (r["plugin_id"], r["_decision"].capability_state, r["_source"]) in html,
+                "<li>%s：%s（报告 %s）</li>" % (r["plugin_id"], r["_decision"].capability_state, r.get("report_id", "")) in html,
                 "不参加排名的 %s 未出现在单列区" % r["_source"],
             )
 
 
-@test("t67_public_face_is_clean")
+@run_case("t67_public_face_is_clean")
 def t67():
     """公开面检查必须干净：不得含本机绝对路径、凭据、内部代号、内部私有路径。"""
     PC = _load("public_check_under_test", "scripts/public_check.py")
@@ -314,7 +314,7 @@ def t67():
     check(total == 0, "公开面检查有 %d 处命中：%s" % (total, hits))
 
 
-@test("t68_spec_hash_registry_in_sync")
+@run_case("t68_spec_hash_registry_in_sync")
 def t68():
     """真源哈希登记必须与实际文件一致（手册：正式实验必须绑定实际文件哈希）。
 
@@ -330,7 +330,7 @@ def t68():
         check(digest in registry, "%s 的哈希未登记在 docs/README.md" % p.name)
 
 
-@test("t69_quickcheck_depth_cannot_claim_five_state")
+@run_case("t69_quickcheck_depth_cannot_claim_five_state")
 def t69():
     """方案 §8：体验快测不得产出能力 Δ 结论（校验器层也必须挡住）。"""
     r = json.loads(
@@ -372,7 +372,7 @@ def t69():
 # --------------------------------------------------------------- 第一批修复（dsh-bench#2/#7/#9/#15/#18）
 
 
-@test("t70_thresholds_frozen_reject_report_values")
+@run_case("t70_thresholds_frozen_reject_report_values")
 def t70():
     r = base_report()
     r["a"] = 0.1
@@ -383,7 +383,7 @@ def t70():
     check("平台冻结" in txt and "a=0.1" in txt.replace("0.1'", "0.1'"), "中止理由须点名门槛冻结：%s" % txt)
 
 
-@test("t71_scores_must_cross_check")
+@run_case("t71_scores_must_cross_check")
 def t71():
     verdict = VD.load_verdict()
     r = base_report()
@@ -400,7 +400,7 @@ def t71():
     check(any("同有同无" in e for e in errors2), "interval 与 delta 同有同无须成立：%s" % errors_text(errors2))
 
 
-@test("t72_future_tested_at_rejected")
+@run_case("t72_future_tested_at_rejected")
 def t72():
     verdict = VD.load_verdict()
     r = base_report()
@@ -410,7 +410,7 @@ def t72():
     check(any("测完日期在未来" in e for e in errors), "未来测完日期须被拒：%s" % errors_text(errors))
 
 
-@test("t73_kind_by_directory_not_prefix")
+@run_case("t73_kind_by_directory_not_prefix")
 def t73():
     verdict = VD.load_verdict()
     tmp = Path(tempfile.mkdtemp(prefix="lpb_kind_"))
@@ -430,7 +430,7 @@ def t73():
     check(not ok2 and any("所在目录" in e for e in errors2), "根目录文件须报「无法从所在目录推断类型」：%s" % errors_text(errors2))
 
 
-@test("t74_dangling_evidence_rejected")
+@run_case("t74_dangling_evidence_rejected")
 def t74():
     r = base_report()
     r["evidence"]["evidence_id"] = "does-not-exist"
@@ -438,7 +438,7 @@ def t74():
     check(not ok and any("悬空" in e for e in errors), "悬空证据引用必须被拒：%s" % errors_text(errors))
 
 
-@test("t75_evidence_fail_propagates")
+@run_case("t75_evidence_fail_propagates")
 def t75():
     verdict = VD.load_verdict()
     tmp = Path(tempfile.mkdtemp(prefix="lpb_ev_"))
@@ -456,7 +456,7 @@ def t75():
 # --------------------------------------------------------------- 第二批 2a（#8②/#16/#17/#22/#23/#12④）
 
 
-@test("t76_run_status_and_untestable_reason_accepted")
+@run_case("t76_run_status_and_untestable_reason_accepted")
 def t76():
     verdict = VD.load_verdict()
     r = base_report()
@@ -480,7 +480,7 @@ def t76():
     check(ok2, "实验无效如实填写须通过：%s" % errors_text(errors2))
 
 
-@test("t77_security_events_status_reconciled")
+@run_case("t77_security_events_status_reconciled")
 def t77():
     verdict = VD.load_verdict()
     r = base_report()
@@ -490,7 +490,7 @@ def t77():
     check(not ok and any("安全对账不符" in e for e in errors), "events 与 status 须对账：%s" % errors_text(errors))
 
 
-@test("t78_investigation_requires_started_at")
+@run_case("t78_investigation_requires_started_at")
 def t78():
     verdict = VD.load_verdict()
     r = base_report()
@@ -504,7 +504,7 @@ def t78():
     check(not ok2 and any("investigation_started_at" in e for e in errors2), "调查中缺起始日期须被拒：%s" % errors_text(errors2))
 
 
-@test("t79_reviewed_at_order_enforced")
+@run_case("t79_reviewed_at_order_enforced")
 def t79():
     verdict = VD.load_verdict()
     r = base_report()
@@ -513,7 +513,7 @@ def t79():
     check(not ok and any("早于 tested_at" in e for e in errors), "复核早于测完须被拒：%s" % errors_text(errors))
 
 
-@test("t80_negative_cost_rejected")
+@run_case("t80_negative_cost_rejected")
 def t80():
     r = base_report()
     r["cost"]["total_cost"] = -12
@@ -521,7 +521,7 @@ def t80():
     check(not ok, "负总成本须被拒：%s" % errors_text(errors))
 
 
-@test("t81_nan_literal_rejected")
+@run_case("t81_nan_literal_rejected")
 def t81():
     tmp = Path(tempfile.mkdtemp(prefix="lpb_nan_"))
     d = tmp / "reports"; d.mkdir()
@@ -534,7 +534,7 @@ def t81():
     check(not ok and any("NaN" in e or "非标准数值" in e for e in errors), "NaN 字面量须被拒：%s" % errors_text(errors))
 
 
-@test("t82_broken_file_does_not_silence_batch")
+@run_case("t82_broken_file_does_not_silence_batch")
 def t82():
     verdict = VD.load_verdict()
     tmp = Path(tempfile.mkdtemp(prefix="lpb_h3_"))
@@ -549,7 +549,7 @@ def t82():
     check(ok, "合格报告独立校验须通过：%s" % errors_text(errors))
 
 
-@test("t83_corrections_structure_enforced")
+@run_case("t83_corrections_structure_enforced")
 def t83():
     verdict = VD.load_verdict()
     r = base_report()
@@ -563,7 +563,7 @@ def t83():
     check(not ok2 and any("更正记录须为对象" in e for e in errors2), "非对象更正须被拒：%s" % errors_text(errors2))
 
 
-@test("t84_disclosure_required_for_official")
+@run_case("t84_disclosure_required_for_official")
 def t84():
     verdict = VD.load_verdict()
     r = base_report()
@@ -573,7 +573,7 @@ def t84():
     check(not ok and any("disclosure" in e for e in errors), "正式报告空利益关系须被拒：%s" % errors_text(errors))
 
 
-@test("t85_ledger_month_and_reconciliation")
+@run_case("t85_ledger_month_and_reconciliation")
 def t85():
     verdict = VD.load_verdict()
     led = json.loads((ROOT / "data/ledger/ledger-2026-10.json").read_text(encoding="utf-8"))
@@ -588,7 +588,7 @@ def t85():
     check(any("账本不对账" in e for e in errors3), "published 与实际不符须被拒：%s" % errors_text(errors3))
 
 
-@test("t86_human_conclusion_must_match_recomputed")
+@run_case("t86_human_conclusion_must_match_recomputed")
 def t86():
     verdict = VD.load_verdict()
     r = base_report()
@@ -728,3 +728,19 @@ def main(argv=None) -> int:
 
 if __name__ == "__main__":
     sys.exit(main())
+
+
+def run_all():
+    """执行全部判据，返回失败 id 列表（dsh-bench#1：pytest 聚合入口）。"""
+    fails = []
+    for tid, fn in TESTS:
+        try:
+            fn()
+        except Exception as exc:
+            fails.append("%s: %s" % (tid, exc))
+    return fails
+
+
+def test_run_all():
+    fails = run_all()
+    assert not fails, "守卫失败项：%s" % fails

@@ -24,6 +24,7 @@ import argparse
 import html
 import importlib.util
 import json
+import shutil
 import re
 import sys
 from datetime import date, datetime
@@ -78,11 +79,13 @@ def slug(text: str) -> str:
     return s or "item"
 
 
+_PH = __import__("re").compile(r"\{\{(\w+)\}\}")
+
+
 def render(template_name: str, **kw) -> str:
+    # dsh-bench#8④：一次性替换——只扫模板原文，填入值里的 {{key}} 字面量不再被二次替换
     text = (TEMPLATE_DIR / template_name).read_text(encoding="utf-8")
-    for key, value in kw.items():
-        text = text.replace("{{%s}}" % key, "" if value is None else str(value))
-    return text
+    return _PH.sub(lambda m: "" if kw.get(m.group(1)) is None else str(kw[m.group(1)]), text)
 
 
 def page(title: str, body: str, banner: str = "") -> str:
@@ -232,12 +235,18 @@ def check_report(report: dict, evidence_index: dict = None) -> dict:
         confirmed_severe_security_event=sec.get("status") == "已确认事件",
         security_investigation=sec.get("status") == "调查中",
         tested_at=report.get("tested_at"),
-        now=date.today().isoformat(),
+        now=_NOW or date.today().isoformat(),
         original_deleted=bool(ev.get("original_deleted")),
         redacted_evidence_sufficient=bool(ev.get("redacted_evidence_sufficient", True)),
         depth=report.get("depth"),
         report_status=report.get("report_status", "正式"),
         invalidation=report.get("invalidation"),
+        scenario_count=report.get("scenario_count"),
+        # dsh-bench#6 F1：证据层输入传入 decide，让 Decision 真正由输入算出
+        tool_results=report.get("tool_results"),
+        security_six_threats=(report.get("security_scope") or {}).get("threats"),
+        quick_check=report.get("quick_check"),
+        risk_level=report.get("risk_level"),
     )
     if d.capability_state != report.get("capability_state"):
         raise BuildError(
@@ -285,9 +294,47 @@ def build_evidence_index(data_dir: Path) -> dict:
     return idx
 
 
+_NOW = None  # dsh-bench#8①：构建时钟（--as-of，缺省今天），写入 build-manifest.json
+
+
+def _ver_key(ref: str):
+    """从 plugin_identity.ref 提取可比较版本键（@x.y.z → (x,y,z)；不可解析退化为 (0,)）。"""
+    tail = str(ref).rsplit("@", 1)[-1] if "@" in str(ref) else ""
+    parts = []
+    for seg in tail.split("."):
+        if seg.isdigit():
+            parts.append(int(seg))
+        else:
+            return (0,)
+    return tuple(parts) or (0,)
+
+
 def load_data(data_dir: Path, include_examples: bool) -> dict:
     ev_index = build_evidence_index(data_dir)
+    plugins = load_json_dir(data_dir / "plugins")
+    registered = {p.get("plugin_id") for p in plugins}
     reports = [check_report(r, ev_index) for r in load_json_dir(data_dir / "reports")]
+    # dsh-bench#11：未登记插件不得进榜（fail-closed）
+    for r in reports:
+        if r["plugin_id"] not in registered:
+            raise BuildError("%s: 插件 %r 未在 data/plugins/ 登记，不得进榜（先登记插件再发报告）" % (r.get("_source"), r["plugin_id"]))
+    # dsh-bench#12②：同一插件同一域只取最高版本进榜，旧版本转入不参加排名区
+    best = {}
+    for r in reports:
+        key = (r["plugin_id"], r["domain"])
+        ref = (r.get("plugin_identity") or {}).get("ref") or ""
+        k = _ver_key(ref)
+        if key not in best or k > best[key][0]:
+            best[key] = (k, ref, r)
+    for r in reports:
+        key = (r["plugin_id"], r["domain"])
+        _, top_ref, top_r = best[key]
+        if r is not top_r:
+            r["_superseded_by"] = top_ref
+            r.setdefault("_decision").notes.append(
+                "plugin_identity.ref=%r 非该插件同域最高版本（最高 %s）：不进数字排名，历史结论保留。" % (ref_of(r), top_ref)
+            )
+            r["_decision"].rank_eligible = False
     examples = []
     if include_examples:
         for p in sorted((data_dir / "examples").glob("report-*.json")):
@@ -296,12 +343,16 @@ def load_data(data_dir: Path, include_examples: bool) -> dict:
             r["_example"] = True
             examples.append(check_report(r, ev_index))
     return {
-        "plugins": load_json_dir(data_dir / "plugins"),
+        "plugins": plugins,
         "reports": reports,
         "examples": examples,
         "ledger": load_json_dir(data_dir / "ledger"),
         "evidence": load_json_dir(data_dir / "evidence"),
     }
+
+
+def ref_of(report: dict) -> str:
+    return (report.get("plugin_identity") or {}).get("ref") or ""
 
 
 # ------------------------------------------------------------- 页面片段
@@ -376,8 +427,8 @@ def domain_table(reports: list) -> str:
     html_unranked = ""
     if unranked:
         html_unranked = "<h3>不参加数字排名（照常展示）</h3><ul>" + "".join(
-            "<li>%s：%s（%s）</li>"
-            % (esc(r["plugin_id"]), esc(r["_decision"].capability_state), esc(r["_source"]))
+            "<li>%s：%s（报告 %s）</li>"
+            % (esc(r["plugin_id"]), esc(r["_decision"].capability_state), esc(r.get("report_id", "")))
             for r in unranked
         ) + "</ul>"
     note = (
@@ -391,7 +442,9 @@ def comparability_groups(reports: list) -> dict:
     groups = {}
     for r in reports:
         c = r.get("comparability") or {}
-        key = (r["domain"], c.get("model"), c.get("host"), c.get("taskset"), c.get("budget_policy"))
+        # dsh-bench#11：可比组必须绑定题集/判分器/协议哈希——自由文本相同但哈希不同不可比
+        key = (r["domain"], c.get("model"), c.get("host"), c.get("taskset"), c.get("budget_policy"),
+               r.get("taskset_hash"), r.get("scorer_hash"), r.get("protocol_hash"))
         groups.setdefault(key, []).append(r)
     return groups
 
@@ -423,6 +476,9 @@ def cost_block(report: dict) -> str:
 
 
 def build(out_dir: Path, data: dict) -> list:
+    # dsh-bench#21 M1：构建是全量重建——先清空输出目录，撤下的报告页不再残留
+    if out_dir.exists():
+        shutil.rmtree(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
     (out_dir / "static").mkdir(exist_ok=True)
     for f in STATIC_DIR.glob("*"):
@@ -447,15 +503,25 @@ def build(out_dir: Path, data: dict) -> list:
             ("method.html", "怎么测的", "方法、题目、判分程序和局限。"),
         ]
     )
+    # dsh-bench#10：覆盖面从报告推导——有报告才算「已测」，深度列报告实际档位
+    prs_by_plugin = {}
+    for r in all_reports:
+        prs_by_plugin.setdefault(r["plugin_id"], []).append(r)
     coverage = "".join(
         "<li>%s：%s</li>"
         % (
             esc(p["name"]),
-            esc("已测（%s）" % p["tested_depth"] if p.get("tested_depth") not in (None, "未测") else "未测"),
+            esc(
+                "已测（%s）" % "／".join(sorted({str(r.get("depth")) for r in prs_by_plugin.get(p["plugin_id"], [])}))
+                if prs_by_plugin.get(p["plugin_id"]) else "未测"
+            ),
         )
         for p in data["plugins"]
     ) or "<li>还没有登记插件。未测就写「未测」，不留空。</li>"
-    latest = "".join(report_card(r) for r in all_reports) or "<li>还没有报告。</li>"
+    # dsh-bench#21 M5：最新报告按 tested_at 倒序，不再按文件名
+    latest = "".join(
+        report_card(r) for r in sorted(all_reports, key=lambda x: str(x.get("tested_at")), reverse=True)
+    ) or "<li>还没有报告。</li>"
     index_body = render(
         "index.html",
         intro=load_content("index.md"),
@@ -473,7 +539,8 @@ def build(out_dir: Path, data: dict) -> list:
         rbanner = banner if r.get("_example") else ""
         safety = ""
         sec = r.get("security") or {}
-        if sec.get("status") not in (None, "未测", "未发现问题"):
+        # dsh-bench#19 J2：只有负面状态进「安全提醒」块；「指定检查通过」等正面状态不进警示版式
+        if sec.get("status") in ("已确认事件", "调查中"):
             safety = (
                 '<div class="safety"><strong>安全提醒（单独显示）</strong><p>状态：%s</p>'
                 "<p>能力结果保留，不改零分、不抹掉。</p></div>"
@@ -481,6 +548,9 @@ def build(out_dir: Path, data: dict) -> list:
         human = "<dl>" + "".join(
             "<dt>%s</dt><dd>%s</dd>" % (esc(k), esc(v)) for k, v in (r.get("human_text") or {}).items()
         ) + "</dl>"
+        # dsh-bench#23 Q2：版本与日期由结构化字段生成，手填文本只作补充
+        human = ("<p class=\"meta\">被测版本：%s ｜ 测完：%s ｜ 有效期至：%s</p>" %
+                 (esc(ref_of(r)) or "未登记", esc(show(r.get("tested_at"))), esc(show(r.get("expires_at"))))) + human
         iv = r.get("interval") or {}
         numbers = (
             "<ul class=\"numbers\">"
@@ -501,7 +571,8 @@ def build(out_dir: Path, data: dict) -> list:
         scope = "<p>%s</p><ul>%s</ul>" % (esc((r.get("human_text") or {}).get("查了什么没查什么", "")), notes)
 
         # 三张单分开（方案 §9）：能力 / 好不好用 / 花费与安全；第三张里钱与安全也分栏
-        cards_data = r.get("cards") or {}
+        # dsh-bench#6 F1：只渲染 decide 复算结果，报告 JSON 的手填卡片不再上页
+        cards_data = d.cards
         cap_card = cards_data.get(V.CARD_CAPABILITY) or {}
         use_card = cards_data.get(V.CARD_USABILITY) or {}
         third_card = cards_data.get(V.CARD_COST_AND_SAFETY) or {}
@@ -519,14 +590,14 @@ def build(out_dir: Path, data: dict) -> list:
             esc((third_card.get("safety") or {}).get("display", "未测")),
         )
 
-        # 工具型四件事（方案 §4.1）
-        four = r.get("tool_four_things") or {}
+        # 工具型四件事（方案 §4.1）—— dsh-bench#6 F1：渲染 decide 输出
+        four = d.tool_four_things or {}
         four_html = "<ul>" + "".join(
             "<li>%s：%s</li>" % (esc(k), esc(four.get(k, "未测"))) for k in V.FOUR_THINGS
         ) + "</ul>"
 
-        # 安全专项（方案 §8）：深度审计才有；标准测评标不适用
-        sc = r.get("security_scope") or {}
+        # 安全专项（方案 §8）：深度审计才有；标准测评标不适用 —— dsh-bench#6 F1：渲染 decide 输出
+        sc = d.security_scope or {}
         scope_sec = "<p>%s</p>" % esc(sc.get("display", "未测"))
         if sc.get("applicable"):
             scope_sec += "<ul>" + "".join(
@@ -539,7 +610,8 @@ def build(out_dir: Path, data: dict) -> list:
             "<ul><li>证据：%s</li><li>实验：%s / 分析：%s</li>"
             "<li>协议哈希：<code>%s</code></li><li>判分器哈希：<code>%s</code></li>"
             "<li>环境：%s</li><li>复核：%s（独立：%s）</li><li>利益关系：%s</li>"
-            "<li>风险等级：%s</li></ul>"
+            "<li>题集哈希：<code>%s</code></li>"
+            "<li>风险等级：%s%s</li></ul>"
         ) % (
             esc((r.get("evidence") or {}).get("evidence_id")),
             esc(r["experiment_id"]), esc(r["analysis_id"]),
@@ -548,7 +620,10 @@ def build(out_dir: Path, data: dict) -> list:
             esc((r.get("review") or {}).get("independent_reviewer")),
             "是" if (r.get("review") or {}).get("independent") else "否",
             esc(r.get("disclosure")),
-            esc(r.get("risk_level", V.RISK_UNASSESSED)),
+            esc(r.get("taskset_hash")),
+            esc(V.RISK_UNASSESSED),
+            ("（报告自填 %r，未采信；风险等级由判级依据得出，未查清就写未评估）" % r.get("risk_level"))
+            if r.get("risk_level") not in (None, V.RISK_UNASSESSED) else "",
         )
         body = render(
             "report.html",
@@ -576,26 +651,51 @@ def build(out_dir: Path, data: dict) -> list:
             detail=detail,
         )
         name = "report-%s.html" % slug(r["report_id"])
+        if name in written:
+            raise BuildError("report_id %r 与先前报告的页面文件撞名（%s）：report_id 须唯一（dsh-bench#12③）" % (r["report_id"], name))
         (out_dir / name).write_text(page("%s · 报告 · 插件测评站" % esc(r["plugin_id"]), body, rbanner), encoding="utf-8")
         written.append(name)
 
     # 插件页
     for p in data["plugins"]:
         prs = [r for r in all_reports if r["plugin_id"] == p["plugin_id"]]
+        # dsh-bench#10：测到哪/风险/现在推不推 从该插件报告的复算结果推导，不取插件 JSON 手填值
+        depths = sorted({str(r.get("depth")) for r in prs}) or ["未测"]
+        recs = sorted({r["_decision"].recommendation for r in prs}) or ["未测"]
+        worst_risk = "未评估"
+        for r in prs:
+            rl = r.get("risk_level") or "未评估"
+            if rl == "关键" or worst_risk == "关键":
+                worst_risk = "关键" if rl == "关键" else worst_risk
         body = render(
             "plugin.html",
             name=esc(p["name"]),
             tags="".join(
                 '<span class="chip">%s</span>' % esc(x)
-                for x in [p["category"], "面向%s" % p["audience"], "测到%s" % p["tested_depth"],
-                          "风险%s" % p["risk_level"], p["recommendation"]]
+                for x in [p["category"], "面向%s" % p["audience"], "测到%s" % "／".join(depths),
+                          "风险%s" % worst_risk, "／".join(recs)]
             ),
             capabilities=(
                 "<ul>%s</ul>" % "".join("<li>%s</li>" % esc(c) for c in p.get("capabilities", []))
                 if p.get("capabilities")
                 else "<p>未测。</p>"
             ),
-            install="<p>%s</p>" % esc(p["uninstall_notes"]),
+            install=(
+                "<p>%s</p>" % esc(p.get("install_notes") or "未测（插件未登记安装说明）")
+                + ("<p class=\"note\">安装环节：%s</p>" % esc("；".join(sorted({str(r.get("install_status")) for r in prs}))) if prs else "")
+                + ("<p class=\"warn\">⚠ 安装失败记录存在，详见报告。</p>" if any(r.get("install_status") == "安装失败" for r in prs) else "")
+            ),
+            uninstall="<p>%s</p>" % esc(p.get("uninstall_notes") or "未登记"),
+            maintainer=(
+                "<ul>" + "".join(
+                    "<li>%s：%s</li>" % (esc(k), esc(v))
+                    for k, v in (p.get("maintainer") or {}).items() if v not in (None, "")
+                ) + "</ul>" or "<p>未登记。</p>"
+            ),
+            update_log=(
+                "<ul>" + "".join("<li>%s</li>" % esc(u) for u in (p.get("update_log") or [])) + "</ul>"
+                if p.get("update_log") else "<p>暂无更新记录。</p>"
+            ),
             price="<p>%s</p>" % esc(p["price_notes"]),
             caveats="<p>%s</p>" % esc(p["caveats"]),
             identity="<p>身份：%s / %s；可观测：%s</p>" % (
@@ -612,10 +712,11 @@ def build(out_dir: Path, data: dict) -> list:
     groups = comparability_groups(all_reports)
     sections = []
     for key, rs in sorted(groups.items(), key=lambda kv: str(kv[0])):
-        domain, model, host, taskset, budget = key
+        domain, model, host, taskset, budget = key[:5]
+        thash, shash, phash = key[5], key[6], key[7]
         sections.append("<h2>%s</h2>" % esc(domain))
-        sections.append("<p class=\"meta\">可比组：模型 %s · 宿主 %s · 题集 %s · 预算 %s</p>" % (
-            esc(model), esc(host), esc(taskset), esc(budget)))
+        sections.append("<p class=\"meta\">可比组：模型 %s · 宿主 %s · 题集 %s · 预算 %s ｜ 题集哈希 <code>%s</code> · 判分器 <code>%s</code> · 协议 <code>%s</code></p>" % (
+            esc(model), esc(host), esc(taskset), esc(budget), esc(str(thash)[:12]), esc(str(shash)[:12]), esc(str(phash)[:12])))
         sections.append(domain_table(rs))
     body = render("list.html", title="各域榜", intro=load_content("domains.md"), body="".join(sections) or "<p>还没有可比组。</p>")
     (out_dir / "domains.html").write_text(page("各域榜 · 插件测评站", body, banner), encoding="utf-8")
@@ -648,7 +749,11 @@ def build(out_dir: Path, data: dict) -> list:
     # 排期页
     sched_rows = "".join(
         "<tr><td>%s</td><td>%s</td><td>%s</td></tr>"
-        % (esc(p["name"]), esc(p.get("tested_depth", "未测")), esc(p.get("recommendation", "待复核")))
+        % (
+            esc(p["name"]),
+            esc("／".join(sorted({str(r.get("depth")) for r in prs_by_plugin.get(p["plugin_id"], [])})) or "未测"),
+            esc("／".join(sorted({r["_decision"].recommendation for r in prs_by_plugin.get(p["plugin_id"], [])})) or "未测"),
+        )
         for p in data["plugins"]
     ) or "<tr><td colspan=3>还没有登记插件。</td></tr>"
     sched = load_content("schedule.md") + "<table><thead><tr><th>插件</th><th>测到哪</th><th>现在推不推</th></tr></thead><tbody>%s</tbody></table>" % sched_rows
@@ -678,9 +783,15 @@ def build(out_dir: Path, data: dict) -> list:
            esc(l["cost_total"]), esc(l["human_hours"]))
         for l in data["ledger"]
     ) or "<tr><td colspan=6>还没有账目。</td></tr>"
+    # dsh-bench#22 N5：阻塞原因必须上页（空列表写「本月无阻塞」）
+    blocked_rows = "".join(
+        "<li>%s：%s</li>" % (esc(l["month"]), esc("；".join(l.get("blocked") or []) or "本月无阻塞"))
+        for l in data["ledger"]
+    ) or "<li>本月无阻塞。</li>"
     led = (
         "<table><thead><tr><th>月份</th><th>测了多少</th><th>发布报告</th><th>失败</th><th>花了多少</th><th>人时</th></tr></thead>"
-        "<tbody>%s</tbody></table>" % led_rows
+        "<tbody>%s</tbody></table>"
+        "<h3>阻塞与原因</h3><ul>%s</ul>" % (led_rows, blocked_rows)
     )
     (out_dir / "ledger.html").write_text(
         page("账本 · 插件测评站", render("list.html", title="月度账本", intro="", body=led), banner), encoding="utf-8"
@@ -695,7 +806,10 @@ def main(argv=None) -> int:
     ap.add_argument("--data-dir", default=str(DATA_DIR))
     ap.add_argument("--out", default=str(ROOT / "dist"))
     ap.add_argument("--official-only", action="store_true", help="不包含 data/examples 的演示数据")
+    ap.add_argument("--as-of", default=None, help="复算时钟（YYYY-MM-DD），缺省今天；写入 build-manifest.json（dsh-bench#8①）")
     args = ap.parse_args(argv)
+    global _NOW
+    _NOW = args.as_of or date.today().isoformat()
 
     # 发布闸（dsh-bench#3）：构建前先跑校验器，任一 FAIL 即中止。
     # 口径：语义复核（公式/门槛/证据链/状态/分数/时钟）**任何构建都跑**；
@@ -721,6 +835,11 @@ def main(argv=None) -> int:
         print("构建中止（fail-closed）：%s" % exc, file=sys.stderr)
         return 2
     written = build(Path(args.out), data)
+    # dsh-bench#8①：构建时钟入 manifest——产物里记录用的是哪一天
+    (Path(args.out) / "build-manifest.json").write_text(
+        json.dumps({"as_of": _NOW, "as_of_default": args.as_of is None}, ensure_ascii=False, indent=1),
+        encoding="utf-8",
+    )
     print("生成 %d 个页面到 %s" % (len(written), args.out))
     for w in written:
         print("  " + w)

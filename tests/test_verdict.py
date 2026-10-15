@@ -36,7 +36,7 @@ V = _load("verdict_under_test", "scripts/verdict.py")
 TESTS = []
 
 
-def test(tid):
+def run_case(tid):
     def deco(fn):
         TESTS.append((tid, fn))
         return fn
@@ -51,7 +51,7 @@ def check(cond, msg):
 
 # --------------------------------------------------------------- §7 边界表逐行
 
-@test("t01_boundary_6_10_useful")
+@run_case("t01_boundary_6_10_useful")
 def t01():
     d = V.decide((6, 10))
     check(d.capability_state == V.STATE_USEFUL, "期望真有用，实得 %s" % d.capability_state)
@@ -59,46 +59,46 @@ def t01():
     check(d.rank_eligible, "真有用且精度达标应进数字排名")
 
 
-@test("t02_boundary_neg10_neg6_harmful")
+@run_case("t02_boundary_neg10_neg6_harmful")
 def t02():
     d = V.decide((-10, -6))
     check(d.capability_state == V.STATE_HARMFUL, "期望帮倒忙，实得 %s" % d.capability_state)
     check(d.rank_eligible, "帮倒忙也应正常收录进排名（明确负贡献不隐藏）")
 
 
-@test("t03_boundary_neg2_2_equivalent")
+@run_case("t03_boundary_neg2_2_equivalent")
 def t03():
     d = V.decide((-2, 2))
     check(d.capability_state == V.STATE_EQUIVALENT, "期望没啥差别，实得 %s" % d.capability_state)
     check(d.rank_eligible, "没啥差别在精度达标时进排名")
 
 
-@test("t04_boundary_4_8_uncertain_cross_positive")
+@run_case("t04_boundary_4_8_uncertain_cross_positive")
 def t04():
     d = V.decide((4, 8))
     check(d.capability_state == V.STATE_UNCERTAIN, "跨过正向门槛应还说不准，实得 %s" % d.capability_state)
     check(not d.rank_eligible, "还说不准不进数字排名")
 
 
-@test("t05_boundary_neg8_neg4_uncertain_cross_negative")
+@run_case("t05_boundary_neg8_neg4_uncertain_cross_negative")
 def t05():
     d = V.decide((-8, -4))
     check(d.capability_state == V.STATE_UNCERTAIN, "跨过负向门槛应还说不准，实得 %s" % d.capability_state)
 
 
-@test("t06_boundary_5_8_uncertain_exact_positive")
+@run_case("t06_boundary_5_8_uncertain_exact_positive")
 def t06():
     d = V.decide((5, 8))
     check(d.capability_state == V.STATE_UNCERTAIN, "正好卡门槛（L=a）应还说不准，实得 %s" % d.capability_state)
 
 
-@test("t07_boundary_neg8_neg5_uncertain_exact_negative")
+@run_case("t07_boundary_neg8_neg5_uncertain_exact_negative")
 def t07():
     d = V.decide((-8, -5))
     check(d.capability_state == V.STATE_UNCERTAIN, "正好卡门槛（U=-b）应还说不准，实得 %s" % d.capability_state)
 
 
-@test("t08_boundary_neg9_9_uncertain_low_precision")
+@run_case("t08_boundary_neg9_9_uncertain_low_precision")
 def t08():
     d = V.decide((-9, 9))
     check(d.capability_state == V.STATE_UNCERTAIN, "精度不足应还说不准，实得 %s" % d.capability_state)
@@ -106,7 +106,7 @@ def t08():
     check(not d.precision_ok, "半宽 9 > 5，precision_ok 必须为假")
 
 
-@test("t09_boundary_6_30_uncertain_direction_clear_low_precision")
+@run_case("t09_boundary_6_30_uncertain_direction_clear_low_precision")
 def t09():
     d = V.decide((6, 30))
     check(d.capability_state == V.STATE_UNCERTAIN, "方向明确但精度不足应还说不准，实得 %s" % d.capability_state)
@@ -116,7 +116,7 @@ def t09():
 
 # --------------------------------------------------------------- 拒绝分析
 
-@test("t10_refuse_missing_evidence")
+@run_case("t10_refuse_missing_evidence")
 def t10():
     d = V.decide((6, 10), evidence_ok=False)
     check(d.capability_state == V.STATUS_PENDING, "缺必要证据应拒绝分析，实得 %s" % d.capability_state)
@@ -124,14 +124,14 @@ def t10():
     check(d.interval is None, "拒绝分析不得生成数值区间")
 
 
-@test("t11_refuse_L_gt_U")
+@run_case("t11_refuse_L_gt_U")
 def t11():
     d = V.decide((8, 4))
     check(d.capability_state == V.STATUS_PENDING, "L>U 应拒绝分析，实得 %s" % d.capability_state)
     check(any("L>U" in r for r in d.reasons), "原因须点名 L>U：%r" % d.reasons)
 
 
-@test("t12_refuse_nan")
+@run_case("t12_refuse_nan")
 def t12():
     d = V.decide((float("nan"), 10))
     check(d.capability_state == V.STATUS_PENDING, "NaN 应拒绝分析，实得 %s" % d.capability_state)
@@ -140,7 +140,7 @@ def t12():
 
 # --------------------------------------------------------------- 组合规则
 
-@test("t13_install_failed_untestable_and_install_recorded")
+@run_case("t13_install_failed_untestable_and_install_recorded")
 def t13():
     d = V.decide(install_failed=True)
     check(d.capability_state == V.STATE_UNTESTABLE, "安装失败能力应没法测，实得 %s" % d.capability_state)
@@ -148,26 +148,26 @@ def t13():
     check(any("安装环节" in n and "失败" in n for n in d.notes), "须同时记录安装环节失败：%r" % d.notes)
 
 
-@test("t14_security_confirmed_capability_kept")
+@run_case("t14_security_confirmed_capability_kept")
 def t14():
     d = V.decide((12, 16), confirmed_severe_security_event=True)
     check(d.capability_state == V.STATE_USEFUL, "已确认严重安全事件不得抹掉能力结果，实得 %s" % d.capability_state)
     check(d.interval == (12.0, 16.0), "区间不得被安全标签改动")
 
 
-@test("t15_security_confirmed_suspend_recommendation")
+@run_case("t15_security_confirmed_suspend_recommendation")
 def t15():
     d = V.decide((12, 16), confirmed_severe_security_event=True)
     check(d.recommendation == "暂停推荐", "已确认严重事件应暂停推荐，实得 %r" % d.recommendation)
 
 
-@test("t16_security_confirmed_not_worth_trying")
+@run_case("t16_security_confirmed_not_worth_trying")
 def t16():
     d = V.decide((12, 16), confirmed_severe_security_event=True)
     check(not d.worth_trying, "暂停推荐的版本不得进「值得试」入口")
 
 
-@test("t17_expired_exits_ranking_and_badge")
+@run_case("t17_expired_exits_ranking_and_badge")
 def t17():
     d = V.decide((12, 16), tested_at="2026-01-01", now="2026-06-01")
     check(d.expired, "超过 90 天须标记过期")
@@ -177,7 +177,7 @@ def t17():
     check(d.capability_state == V.STATE_USEFUL, "历史结论保留，不因过期改能力状态")
 
 
-@test("t18_uncertain_untestable_displayed_not_ranked")
+@run_case("t18_uncertain_untestable_displayed_not_ranked")
 def t18():
     u = V.decide((4, 8))
     n = V.decide(task_not_applicable=True)
@@ -187,7 +187,7 @@ def t18():
     check(bool(n.notes) and bool(n.reasons), "照常展示：须有原因说明")
 
 
-@test("t19_evidence_limited_exits_ranking")
+@run_case("t19_evidence_limited_exits_ranking")
 def t19():
     d = V.decide((12, 16), original_deleted=True, redacted_evidence_sufficient=False)
     check(d.evidence_verification_limited, "须标证据核验受限")
@@ -196,7 +196,7 @@ def t19():
     check(d.capability_state == V.STATE_USEFUL, "能力结果保留")
 
 
-@test("t20_invalid_run_no_capability_state")
+@run_case("t20_invalid_run_no_capability_state")
 def t20():
     d = V.decide(run_valid=False)
     check(d.capability_state == V.STATUS_INVALID_RUN, "实验无效是运行层状态，实得 %s" % d.capability_state)
@@ -204,7 +204,7 @@ def t20():
     check(not d.rank_eligible, "实验无效不进排名")
 
 
-@test("t21_invalid_run_is_not_evidence_insufficient")
+@run_case("t21_invalid_run_is_not_evidence_insufficient")
 def t21():
     inv = V.decide(run_valid=False)
     ins = V.decide(interval=None)
@@ -213,20 +213,20 @@ def t21():
     check(inv.capability_state != ins.capability_state, "两者不得混为一谈")
 
 
-@test("t22_equivalence_is_not_absolute_zero")
+@run_case("t22_equivalence_is_not_absolute_zero")
 def t22():
     check("不是绝对一样" in V.STATE_PLAIN[V.STATE_EQUIVALENT], "「没啥差别」的白话须写明不是绝对一样")
 
 
 # --------------------------------------------------------------- 时效
 
-@test("t25_expiry_is_90_days")
+@run_case("t25_expiry_is_90_days")
 def t25():
     check(V.VALIDITY_DAYS_DEFAULT == 90, "默认有效期须为 90 天")
     check(V.expires_at("2026-10-01").isoformat() == "2026-12-30", "测完 90 天应为 2026-12-30")
 
 
-@test("t26_expiry_date_change_is_not_renewal")
+@run_case("t26_expiry_date_change_is_not_renewal")
 def t26():
     check(V.expiry_consistent("2026-10-01", "2026-12-30"), "一致时应为真")
     check(not V.expiry_consistent("2026-10-01", "2027-12-30"), "只改日期不算续期，须判不一致")
@@ -234,7 +234,7 @@ def t26():
 
 # --------------------------------------------------------------- 成本口径
 
-@test("t27_cost_zero_success_no_division")
+@run_case("t27_cost_zero_success_no_division")
 def t27():
     r = V.unit_success_cost(12.0, 0)
     check(r["value"] is None, "成功数为 0 不得给出比值")
@@ -242,7 +242,7 @@ def t27():
     check(r["total_cost"] == 12.0, "仍须展示实际总花费")
 
 
-@test("t28_cost_incremental_nonpositive")
+@run_case("t28_cost_incremental_nonpositive")
 def t28():
     r = V.incremental_unit_success_cost(12.0, 10.0, 5, 5)
     check(r["value"] is None, "增量成功数 ≤0 不得给比值")
@@ -250,7 +250,7 @@ def t28():
     check(r["delta_cost"] == 2.0 and r["delta_successes"] == 0, "须单列花费差与结果差")
 
 
-@test("t29_cost_unmeasured_not_zero")
+@run_case("t29_cost_unmeasured_not_zero")
 def t29():
     r = V.unit_success_cost(None, None)
     check(r["value"] is None, "观测不到不得给数字")
@@ -261,7 +261,7 @@ def t29():
 
 # --------------------------------------------------------------- 样本层
 
-@test("t30_sample_layer_valid_runs")
+@run_case("t30_sample_layer_valid_runs")
 def t30():
     runs = [{"run_id": "a", "valid": True}, {"run_id": "b", "valid": False}]
     valid, dropped = V.select_valid_runs(runs)
@@ -269,26 +269,26 @@ def t30():
     check([r["run_id"] for r in dropped] == ["b"], "无效运行须作废留痕")
 
 
-@test("t31_sample_layer_incomplete_pairs")
+@run_case("t31_sample_layer_incomplete_pairs")
 def t31():
     pairs = [{"pair_id": "p1", "b0": 1, "p": 2}, {"pair_id": "p2", "b0": 1, "p": None}]
     check(V.incomplete_pairs(pairs) == ["p2"], "缺 B0 或 P 的配对须被识别")
 
 
-@test("t32_sample_layer_weights")
+@run_case("t32_sample_layer_weights")
 def t32():
     check(V.weights_ok({"a": 0.5, "b": 0.5}), "权重和为 1 应通过")
     check(not V.weights_ok({"a": 0.5, "b": 0.4}), "权重和不为 1 须拒绝")
     check(not V.weights_ok({}), "空权重须拒绝")
 
 
-@test("t33_cross_scenario_claim_guard")
+@run_case("t33_cross_scenario_claim_guard")
 def t33():
     check(V.cross_scenario_claim_allowed(2), "≥2 个场景可生成跨场景结论")
     check(not V.cross_scenario_claim_allowed(1), "只有一个场景不得生成跨场景正式结论")
 
 
-@test("t34_analysis_manifest_required")
+@run_case("t34_analysis_manifest_required")
 def t34():
     missing = V.check_analysis_manifest({"analysis_id": "a"})
     for k in ("seed", "rng", "library_versions", "bootstrap_resamples", "percentile_method", "scenario_aggregation"):
@@ -300,14 +300,14 @@ def t34():
 
 # --------------------------------------------------------------- 门槛与档位
 
-@test("t35_first_domain_gate_a_b_5")
+@run_case("t35_first_domain_gate_a_b_5")
 def t35():
     check(V.A_DEFAULT == 5.0 and V.B_DEFAULT == 5.0, "启动候选门槛须为 a=b=5")
     check(V.MAX_HALF_WIDTH_DEFAULT == 5.0, "精度门槛半宽须 ≤5")
     check(V.decide((6, 10)).interval == (6.0, 10.0), "区间原样保留")
 
 
-@test("t36_depth_not_ranked_fast_test")
+@run_case("t36_depth_not_ranked_fast_test")
 def t36():
     """档位能说什么（方案 §8 / 手册 §6）。
 
@@ -358,7 +358,7 @@ def t36():
 
 # --------------------------------------------------------------- 方案 §8 / §4.1 / §9
 
-@test("t37_quick_check_record_and_banned_wording")
+@run_case("t37_quick_check_record_and_banned_wording")
 def t37():
     """手册 §6：快测只描述检查结果，禁用「通过」「合格」这类词。"""
     d = V.decide(
@@ -381,7 +381,7 @@ def t37():
     check("已检查" in V.sanitize_quick_check_text("安装通过"), "禁用词须被换成描述性表述")
 
 
-@test("t38_quick_check_untested_not_blank")
+@run_case("t38_quick_check_untested_not_blank")
 def t38():
     """未测就写「未测」，不留空（方案 §16）。"""
     d = V.decide((6, 10), depth=V.DEPTH_FAST)
@@ -389,7 +389,7 @@ def t38():
     check(d.cards[V.CARD_CAPABILITY]["display"].startswith("未测"), "能力栏须写未测")
 
 
-@test("t39_security_scope_by_depth")
+@run_case("t39_security_scope_by_depth")
 def t39():
     """方案 §8：深度审计 = 标准测评 + 六类安全专项；标准测评标不适用，不留空。"""
     std = V.decide((6, 10))
@@ -407,7 +407,7 @@ def t39():
     check(aud.capability_state == std.capability_state, "深度审计的能力结论与标准测评同规")
 
 
-@test("t40_cards_separate_and_tool_four_things")
+@run_case("t40_cards_separate_and_tool_four_things")
 def t40():
     """方案 §9 三张单分开、第三张里钱与安全分栏；方案 §4.1 工具型四件事分开看。"""
     d = V.decide(
@@ -436,7 +436,7 @@ def t40():
 # --------------------------------------------------------------- 第一批修复（dsh-bench#4/#7/#13）
 
 
-@test("t41_harmful_not_recommended_no_badge")
+@run_case("t41_harmful_not_recommended_no_badge")
 def t41():
     d = V.decide((-10, -6))
     check(d.capability_state == V.STATE_HARMFUL, "期望帮倒忙")
@@ -446,21 +446,21 @@ def t41():
     check(d.rank_eligible, "帮倒忙照常进数字排名（明确负贡献不隐藏）")
 
 
-@test("t42_report_status_nonofficial_not_ranked")
+@run_case("t42_report_status_nonofficial_not_ranked")
 def t42():
     d = V.decide((6, 10), report_status="方法试验")
     check(not d.rank_eligible, "非「正式」报告不得进数字排名")
     check(any("report_status" in n for n in d.notes), "notes 须点名 report_status：%s" % d.notes)
 
 
-@test("t43_invalidation_retires_report")
+@run_case("t43_invalidation_retires_report")
 def t43():
     d = V.decide((6, 10), invalidation={"status": "已失效", "reason": "证据撤回"})
     check(not d.rank_eligible, "已失效报告须退榜")
     check(d.recommendation == "待复核", "已失效报告推荐须为待复核，实得 %s" % d.recommendation)
 
 
-@test("t44_evidence_ok_false_reaches_pending")
+@run_case("t44_evidence_ok_false_reaches_pending")
 def t44():
     d = V.decide((6, 10), evidence_ok=False)
     check(d.capability_state == V.STATUS_PENDING, "缺必要证据 → 待验证/待修复，实得 %s" % d.capability_state)
@@ -471,7 +471,7 @@ def t44():
 # --------------------------------------------------------------- 第二批 2a（#16G1/#12①/#19J3）
 
 
-@test("t45_g1_security_survives_early_return")
+@run_case("t45_g1_security_survives_early_return")
 def t45():
     d = V.decide(install_failed=True, confirmed_severe_security_event=True)
     check(d.capability_state == V.STATE_UNTESTABLE, "能力结论保留没法测")
@@ -483,7 +483,7 @@ def t45():
     check(d3.recommendation == "暂停推荐", "拒绝分析路径遇已确认事件须暂停推荐，实得 %s" % d3.recommendation)
 
 
-@test("t46_scenario_count_gates_ranking")
+@run_case("t46_scenario_count_gates_ranking")
 def t46():
     d = V.decide((6, 10), scenario_count=1)
     check(not d.rank_eligible, "单场景不得生成跨场景正式结论")
@@ -492,7 +492,7 @@ def t46():
     check(d2.rank_eligible, "多场景照常进排名")
 
 
-@test("t47_audit_badge_derailed_when_threats_untested")
+@run_case("t47_audit_badge_derailed_when_threats_untested")
 def t47():
     threats = {k: "未测" for k in V.SECURITY_SIX_THREATS}
     d = V.decide((6, 10), depth=V.DEPTH_AUDIT, security_six_threats=threats)
@@ -803,3 +803,19 @@ def main(argv=None) -> int:
 
 if __name__ == "__main__":
     sys.exit(main())
+
+
+def run_all():
+    """执行全部判据，返回失败 id 列表（dsh-bench#1：pytest 聚合入口）。"""
+    fails = []
+    for tid, fn in TESTS:
+        try:
+            fn()
+        except Exception as exc:
+            fails.append("%s: %s" % (tid, exc))
+    return fails
+
+
+def test_run_all():
+    fails = run_all()
+    assert not fails, "守卫失败项：%s" % fails

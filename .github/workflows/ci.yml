@@ -1,0 +1,24 @@
+name: checks
+
+on: [push, pull_request]
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: 判定守卫
+        run: python -X utf8 tests/test_verdict.py
+      - name: 校验器/生成器守卫
+        run: python -X utf8 tests/test_validate_data.py
+      - name: 定点变异自证
+        run: python -X utf8 tests/mutate_selfcheck.py
+      - name: 发布前检查（默认口径）
+        run: python -X utf8 scripts/validate_data.py
+      - name: 官方构建
+        run: python -X utf8 scripts/build_site.py --official-only
+      - name: 公开面检查
+        run: python -X utf8 scripts/public_check.py

@@ -38,10 +38,10 @@
     "events": []
   },
   "cost": {
-    "total_cost": 2.0,
+    "total_cost": 2,
     "success_count": 0,
-    "baseline_cost": 0.0,
-    "baseline_success_count": 0,
+    "baseline_cost": null,
+    "baseline_success_count": null,
     "unit_success_cost": "不适用：没有成功任务",
     "incremental_unit_success_cost": "不适用：没有多干成任务",
     "notes": "示例：快测不测能力 Δ，因此没有成功任务数；禁止除零，仍展示实际花费。"

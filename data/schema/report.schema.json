@@ -263,17 +263,28 @@
       ],
       "properties": {
         "total_cost": {
-          "type": "number"
+          "type": [
+            "number",
+            "null"
+          ],
+          "minimum": 0
         },
         "success_count": {
           "type": "integer",
           "minimum": 0
         },
         "baseline_cost": {
-          "type": "number"
+          "type": [
+            "number",
+            "null"
+          ],
+          "minimum": 0
         },
         "baseline_success_count": {
-          "type": "integer",
+          "type": [
+            "integer",
+            "null"
+          ],
           "minimum": 0
         },
         "unit_success_cost": {

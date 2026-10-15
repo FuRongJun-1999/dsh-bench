@@ -84,20 +84,41 @@ PATTERNS = [
 ]
 
 
+_CRED_EXT = re.compile(
+    "(?i)("
+    + _w(0x73, 0x6B, 0x2D, 0x70, 0x72, 0x6F, 0x6A, 0x2D) + "[A-Za-z0-9]{10,}"   # 某云密钥前缀（proj 形态）
+    + "|" + _w(0x67, 0x69, 0x74, 0x68, 0x75, 0x62, 0x5F, 0x70, 0x61, 0x74, 0x5F) + "[A-Za-z0-9_]{20,}"  # 某平台细粒度令牌
+    + "|" + _w(0x78, 0x6F, 0x78, 0x62, 0x2D) + "[A-Za-z0-9]{10,}"   # 某聊天平台令牌
+    + "|" + _w(0x42, 0x65, 0x61, 0x72, 0x65, 0x72) + "\\s+[A-Za-z0-9._-]{15,}"  # Bearer 头
+    + "|" + _w(0x2D, 0x2D, 0x2D, 0x2D, 0x2D) + "[A-Z ]{0,20}" + _w(0x50, 0x52, 0x49, 0x56, 0x41, 0x54, 0x45) + "[ A-Z]*" + _w(0x4B, 0x45, 0x59)   # PEM 私钥头
+    + "|\"(?:api[_-]?key|password|secret|token)\"\\s*:\\s*\"[^\"]{4,}\""  # JSON 键值形态
+    + ")"
+)
+
+
 def scan_text(text: str) -> list:
     hits = []
     for lineno, line in enumerate(text.splitlines(), 1):
         for key, desc, pat in PATTERNS:
             for m in pat.finditer(line):
                 hits.append({"kind": key, "desc": desc, "line": lineno, "match": m.group(0)})
+        # dsh-bench#17 H4：凭据形态扩展（JSON 键值 / proj 前缀 / 细粒度令牌 / Bearer / PEM）
+        for m in _CRED_EXT.finditer(line):
+            hits.append({"kind": "credential_ext", "desc": "凭据形态（扩展集）", "line": lineno, "match": m.group(0)})
     return hits
 
 
 def iter_files(root: Path):
+    # dsh-bench#21 M4：跳过目录按**相对 root 的组件**匹配——仓库放在任何名下都照扫；
+    # root 本身叫 dist/ 也不例外（生成好的站点同样要扫）。
     for p in sorted(root.rglob("*")):
         if not p.is_file():
             continue
-        if any(part in SKIP_DIRS for part in p.parts):
+        try:
+            rel_parts = p.relative_to(root).parts
+        except ValueError:
+            rel_parts = p.parts
+        if any(part in SKIP_DIRS for part in rel_parts[:-1]):
             continue
         yield p
 
@@ -109,12 +130,25 @@ def main(argv=None) -> int:
     args = ap.parse_args(argv)
 
     root = Path(args.root)
+    if not root.is_dir():
+        # dsh-bench#21 M4：root 不存在不得报「干净」
+        print("公开面检查：root 不存在：%s" % root, file=sys.stderr)
+        return 2
     report = {}
     total = 0
     for p in iter_files(root):
-        try:
-            text = p.read_text(encoding="utf-8")
-        except (UnicodeDecodeError, OSError):
+        text = None
+        for enc in ("utf-8", "utf-16"):
+            try:
+                text = p.read_text(encoding=enc)
+                break
+            except (UnicodeDecodeError, OSError):
+                continue
+        if text is None:
+            # dsh-bench#19 J4：读不了的文件不得静默跳过
+            report.setdefault("<unreadable>" + str(p), [])
+            report["<unreadable>" + str(p)] = [{"kind": "unreadable", "desc": "文件无法解码，未扫描", "line": 0, "match": ""}]
+            total += 1
             continue
         hits = scan_text(text)
         if hits:

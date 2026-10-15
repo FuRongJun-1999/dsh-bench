@@ -29,5 +29,6 @@
   "caveats": "未测就写未测，不留空。",
   "capabilities": [],
   "update_log": [],
-  "report_ids": []
+  "report_ids": [],
+  "install_notes": "示例：解压到插件目录，重启宿主即生效（示例数据）。"
 }
