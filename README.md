@@ -80,7 +80,7 @@ python -X utf8 scripts/public_check.py
 | `site/templates/` + `site/static/` | 中文界面模板与样式（简洁、可读、手机友好、易读字号、清楚按钮） |
 | `content/pages/*.md` | Markdown 内容页（首页、方法、各域、排期、更正） |
 | `tests/test_verdict.py` | §7 边界表逐行 ＋ 组合规则 ＋ 第一批修复判据（#4/#7/#13），共 45 条断言＋pytest 聚合入口 |
-| `tests/test_validate_data.py` | 校验器正例通过、各类缺项各自被拒 ＋ 第一批修复判据（#2/#7/#9/#15/#18），共 37 条断言＋pytest 聚合入口 |
+| `tests/test_validate_data.py` | 校验器正例通过、各类缺项各自被拒 ＋ 第一批修复判据（#2/#7/#9/#15/#18），共 51 条断言＋pytest 聚合入口 |
 | `tests/mutate_selfcheck.py` | 定点变异自证执行器（69 条变异） |
 
 页面（方案 §16/§17 建议路径）：首页／插件页／报告页／各域榜／方法页／排期页／更正页／账本页。

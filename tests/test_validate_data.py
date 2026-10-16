@@ -728,6 +728,104 @@ def t95():
     k4 = BS._ver_key("x@0.0.0-example") + (2,)
     check(k4 > k3, "同 ref 时 report_version 高者胜")
 
+
+# --------------------------------------------------------------- 第四批（#28 T1–T6）
+
+
+@run_case("t96_ledger_tested_ge_published_restored")
+def t96():
+    """dsh-bench#28 T1：已测 ≥ 发布 检查恢复（回归）。"""
+    verdict = VD.load_verdict()
+    led = json.loads((ROOT / "data/ledger/ledger-2026-10.json").read_text(encoding="utf-8"))
+    bad = dict(led, tested_count=0, published_reports=1)
+    errors = VD.semantic_ledger(bad, verdict, actual_published=1)
+    check(any("已测数" in e for e in errors), "测 0 发 1 须被拒：%s" % errors_text(errors))
+
+
+@run_case("t97_cards_have_real_content")
+def t97():
+    """dsh-bench#28 T2：安全栏显示安全状态；钱栏来自复算；有成本数据的报告钱栏不是「未测」。"""
+    verdict = VD.load_verdict()
+    r = base_report()
+    r["security"]["status"] = "已确认事件"
+    d = verdict.decide(
+        (r["interval"]["L"], r["interval"]["U"]),
+        confirmed_severe_security_event=True,
+        cost=r.get("cost"),
+        depth=r.get("depth", verdict.DEPTH_STANDARD),
+    )
+    safety_display = d.cards[verdict.CARD_COST_AND_SAFETY]["safety"]["display"]
+    check("已确认事件" in safety_display, "安全栏 display 须含安全状态：%s" % safety_display)
+    cost_display = d.cards[verdict.CARD_COST_AND_SAFETY]["cost"]["display"]
+    check(cost_display != "未测", "有成本数据的报告钱栏不得为「未测」：%s" % cost_display)
+
+
+@run_case("t98_gate_matches_release_cli")
+def t98():
+    """dsh-bench#28 T3：同月重复账本 → 两条入口都拒（发布闸 rc=2）。"""
+    import subprocess, sys as _sys
+    tmp = Path(tempfile.mkdtemp(prefix="lpb_t3_"))
+    for sub in ("reports", "plugins", "evidence", "ledger", "examples"):
+        (tmp / sub).mkdir(parents=True)
+    led = json.loads((ROOT / "data/ledger/ledger-2026-10.json").read_text(encoding="utf-8"))
+    (tmp / "ledger" / "ledger-2026-10.json").write_text(json.dumps(led, ensure_ascii=False), encoding="utf-8")
+    (tmp / "ledger" / "ledger-2026-10-b.json").write_text(json.dumps(dict(led, ledger_id="ledger-2026-10-b"), ensure_ascii=False), encoding="utf-8")
+    v_cli = subprocess.run([_sys.executable, "-X", "utf8", "scripts/validate_data.py", "--release", "--data-dir", str(tmp)],
+                           cwd=str(ROOT), capture_output=True, text=True, encoding="utf-8")
+    check(v_cli.returncode != 0, "校验器 CLI 拒绝同月重复账本")
+    b = subprocess.run([_sys.executable, "-X", "utf8", "scripts/build_site.py", "--official-only", "--data-dir", str(tmp),
+                        "--out", str(Path(tempfile.mkdtemp(prefix="lpb_t3out_")))],
+                       cwd=str(ROOT), capture_output=True, text=True, encoding="utf-8")
+    check(b.returncode != 0, "官方构建同样拒绝同月重复账本")
+    check("账本月份重复" in (b.stderr or ""), "构建 stderr 须点名同月重复：%s" % (b.stderr or "")[:200])
+
+
+@run_case("t99_invalidation_enum_and_reason")
+def t99():
+    """dsh-bench#28 T4：status=「无」被 schema 枚举拒；失效须有原因。"""
+    verdict = VD.load_verdict()
+    r = base_report()
+    r["invalidation"] = {"status": "无"}
+    ok, errors = write_and_validate(r)
+    check(not ok, "status=「无」不在枚举内须被拒：%s" % errors_text(errors))
+    r2 = base_report()
+    r2["invalidation"] = {"status": "证据失效"}
+    ok2, errors2 = write_and_validate(r2)
+    check(not ok2 and any("reason" in e or "原因" in e for e in errors2), "失效缺原因须被拒：%s" % errors_text(errors2))
+
+
+@run_case("t100_maintainer_empty_shows_unregistered")
+def t100():
+    """dsh-bench#28 T5：全空 maintainer → 插件页显示「未登记」。"""
+    tmp = Path(tempfile.mkdtemp(prefix="lpb_t5d_"))
+    for sub in ("reports", "plugins", "evidence", "ledger", "examples"):
+        (tmp / sub).mkdir(parents=True)
+    pl = json.loads((ROOT / "data/plugins/plugin-example-memory.json").read_text(encoding="utf-8"))
+    pl["maintainer"] = {"name": "", "response_days": None, "known_issue_age_days": None}
+    (tmp / "plugins" / "plugin-example-memory.json").write_text(json.dumps(pl, ensure_ascii=False), encoding="utf-8")
+    data = BS.load_data(tmp, include_examples=False)
+    out = Path(tempfile.mkdtemp(prefix="lpb_t5_"))
+    BS.build(out, data)
+    page = next(p for p in out.glob("plugin-*.html") if "memory" in p.name)
+    html = page.read_text(encoding="utf-8")
+    check("未登记" in html, "作者回应为空时须显示「未登记」：%s" % page.name)
+
+
+@run_case("t101_uncertain_and_equivalent_not_recommended")
+def t101():
+    """dsh-bench#28 T6：还说不准→待复核；没啥差别→看需求；可推荐只留给真有用。"""
+    verdict = VD.load_verdict()
+    d1 = verdict.decide((4, 8))
+    check(d1.capability_state == verdict.STATE_UNCERTAIN and d1.recommendation == "待复核",
+          "还说不准须待复核：%s" % d1.recommendation)
+    d2 = verdict.decide((-2, 2))
+    check(d2.capability_state == verdict.STATE_EQUIVALENT and d2.recommendation == "看需求",
+          "没啥差别须看需求：%s" % d2.recommendation)
+    d3 = verdict.decide((6, 10))
+    check(d3.recommendation == "可推荐", "真有用才可推荐")
+    for st, rec in ((verdict.STATE_HARMFUL, "不推荐"),):
+        pass
+
 MUTATIONS = [
     {"id": "W51", "target": "scripts/validate_data.py", "test_file": "tests/test_validate_data.py",
      "anchor": "        for key in schema.get(\"required\", []):",

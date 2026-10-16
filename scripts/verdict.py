@@ -377,6 +377,8 @@ def decide(
     tool_results: Optional[dict] = None,
     # 方案 §8：深度审计的六类安全专项证据（键=六威胁名）
     security_six_threats: Optional[dict] = None,
+    # 成本复算输入（dsh-bench#28 T2）：第三张单「钱」栏由 unit_success_cost 生成
+    cost: Optional[dict] = None,
     # 样本量（dsh-bench#12①）：单场景不得生成跨场景正式结论
     scenario_count: Optional[int] = None,
     # 生命周期（dsh-bench#4）：report_status 与 invalidation 参与排名资格与推荐
@@ -624,7 +626,7 @@ def decide(
         rank_eligible = False
         notes.append("report_status=%r：非「正式」报告不进数字排名（方法试验／待验证照常展示）。" % report_status)
     inv_status = (invalidation or {}).get("status")
-    if inv_status and inv_status != "有效":
+    if is_invalidated(invalidation):
         rank_eligible = False
         notes.append("invalidation.status=%r：已失效报告退榜（原因：%s）。" % (inv_status, (invalidation or {}).get("reason") or "未填"))
 
@@ -640,15 +642,23 @@ def decide(
         recommendation = "待复核"
     elif expired:
         recommendation = "待复核"
-    elif inv_status and inv_status != "有效":
+    elif is_invalidated(invalidation):
         recommendation = "待复核"
     elif state == STATE_HARMFUL:
         recommendation = "不推荐"
         notes.append("区间为负贡献（帮倒忙）：不推荐、不进「值得试」；结果照常展示与排名（明确负贡献不隐藏）。")
+    elif state == STATE_UNCERTAIN:
+        recommendation = "待复核"
+        notes.append("「还说不准」：结果不够，不能说有用也不能说没用——不推荐（dsh-bench#28 T6）。")
+    elif state == STATE_EQUIVALENT:
+        recommendation = "看需求"
+        notes.append("「没啥差别」不等于绝对一样：是否采用看需求与代价，本站不代读者决定。")
     elif state in (STATE_UNTESTABLE, STATUS_PENDING, STATUS_INVALID_RUN):
         recommendation = "待复核"
-    else:
+    elif state == STATE_USEFUL:
         recommendation = "可推荐"
+    else:
+        recommendation = "待复核"
 
     worth_trying = bool(
         rank_eligible and not confirmed_severe_security_event and not security_investigation
@@ -676,9 +686,30 @@ def decide(
         "precision_ok": precision_ok,
         "rank_eligible": rank_eligible,
     }
+    safety_value = "已确认事件" if confirmed_severe_security_event else ("调查中" if security_investigation else "未测")
+    # dsh-bench#28 T2：safety.display 由 value 生成（页面渲染的就是它）
     cards[CARD_COST_AND_SAFETY]["safety"] = {
-        "value": "已确认事件" if confirmed_severe_security_event else ("调查中" if security_investigation else "未测"),
-        "display": "能力与安全分栏，不算总分",
+        "value": safety_value,
+        "display": ("⛔ 已确认事件（暂停当前版本推荐）" if confirmed_severe_security_event else
+                    ("⏳ 调查中" if security_investigation else "未测")),
+    }
+    # dsh-bench#28 T2：cost 卡由 unit_success_cost / incremental_unit_success_cost 复算生成
+    cost_input = cost or {}
+    unit_calc = unit_success_cost(cost_input.get("total_cost"), cost_input.get("success_count"))
+    incr_calc = incremental_unit_success_cost(
+        cost_input.get("total_cost"), cost_input.get("baseline_cost"),
+        cost_input.get("success_count"), cost_input.get("baseline_success_count"))
+    cost_used = unit_calc.get("value") is not None or incr_calc.get("value") is not None
+    cards[CARD_COST_AND_SAFETY]["cost"] = {
+        "value": unit_calc.get("value"),
+        "display": ("每干成一件 %s；增量 %s" % (unit_calc.get("display"), incr_calc.get("display")))
+                    if cost_used else "未测",
+    }
+    # dsh-bench#28 T2：「好不好用」卡由工具四件事生成（有记录才有内容）
+    four_used = [k for k in FOUR_THINGS if four_things.get(k) not in (None, "", "未测")]
+    cards[CARD_USABILITY] = {
+        "value": None,
+        "display": ("；".join("%s：%s" % (k, four_things.get(k)) for k in four_used) if four_used else "未测"),
     }
     if depth == DEPTH_AUDIT:
         notes.append("档位「%s」：能力结论与标准测评同规，另出六类安全专项结论（仅对指定范围成立）。" % DEPTH_AUDIT)
@@ -793,6 +824,12 @@ def weights_ok(weights: dict, expected_total: float = 1.0, tol: float = 1e-6) ->
     except (TypeError, ValueError):
         return False
     return abs(total - expected_total) <= tol
+
+
+def is_invalidated(invalidation) -> bool:
+    """统一失效判定（dsh-bench#28 T4）：status 枚举外一律视为失效；decide 与更正页共用。"""
+    s = (invalidation or {}).get("status")
+    return bool(s) and s != "有效"
 
 
 def cross_scenario_claim_allowed(scenario_count: int) -> bool:

@@ -246,6 +246,7 @@ def check_report(report: dict, evidence_index: dict = None) -> dict:
         # dsh-bench#6 F1：证据层输入传入 decide，让 Decision 真正由输入算出
         tool_results=report.get("tool_results"),
         security_six_threats=(report.get("security_scope") or {}).get("threats"),
+        cost=report.get("cost"),
         quick_check=report.get("quick_check"),
         risk_level=report.get("risk_level"),
         # dsh-bench#27 S2：运行层输入与校验器同源（实验无效/没法测如实过闸）
@@ -723,10 +724,12 @@ def build(out_dir: Path, data: dict) -> list:
             ),
             uninstall="<p>%s</p>" % esc(p.get("uninstall_notes") or "未登记"),
             maintainer=(
-                "<ul>" + "".join(
-                    "<li>%s：%s</li>" % (esc(k), esc(v))
-                    for k, v in (p.get("maintainer") or {}).items() if v not in (None, "")
-                ) + "</ul>" or "<p>未登记。</p>"
+                (lambda items: ("<ul>%s</ul>" % items) if items else "<p>未登记。</p>")(
+                    "".join(
+                        "<li>%s：%s</li>" % (esc(k), esc(v))
+                        for k, v in (p.get("maintainer") or {}).items() if v not in (None, "")
+                    )
+                )
             ),
             update_log=(
                 "<ul>" + "".join("<li>%s</li>" % esc(u) for u in (p.get("update_log") or [])) + "</ul>"
@@ -804,7 +807,8 @@ def build(out_dir: Path, data: dict) -> list:
         for c in r.get("corrections", []) or []:
             corr_items.append("<li>%s：%s</li>" % (esc(r["report_id"]), esc(c)))
         inv = r.get("invalidation") or {}
-        if inv.get("status") and inv["status"] not in ("有效", "无"):
+        # dsh-bench#28 T4：与 decide() 共用同一失效判定（除「有效」外都算失效，须有原因）
+        if V.is_invalidated(inv):
             corr_items.append("<li>%s：%s（原因：%s）</li>" % (esc(r["report_id"]), esc(inv["status"]), esc(inv.get("reason"))))
     corr = load_content("corrections.md") + ("<ul>%s</ul>" % "".join(corr_items) if corr_items else "<p>还没有更正记录。</p>")
     (out_dir / "corrections.html").write_text(
@@ -871,17 +875,14 @@ def main(argv=None) -> int:
     # release 专属检查（只收「正式」、拒示例、插件测过深度）只在 --official-only 对 reports/ 施加。
     _VD = _load_validate_data()
     data_dir_path = Path(args.data_dir)
-    gate_fail = 0
-    for sub, release in (("reports", args.official_only), ("plugins", False), ("evidence", False), ("ledger", False)):
-        for p in sorted((data_dir_path / sub).glob("*.json")):
-            ok, errs = _VD.validate_file(p, V, release=release)
-            if not ok:
-                gate_fail += 1
-                print("[发布闸] FAIL %s/%s" % (sub, p.name), file=sys.stderr)
-                for e in errs:
-                    print("        - %s" % e, file=sys.stderr)
-    if gate_fail:
-        print("构建中止（发布闸：%d 件未通过）" % gate_fail, file=sys.stderr)
+    # dsh-bench#28 T3：发布闸与校验器共用 validate_tree（跨文件检查同口径）；插件在官方构建按 release 口径
+    gate_failures = _VD.validate_tree(data_dir_path, V, release=args.official_only, now=_NOW)
+    for rel, errs in gate_failures:
+        print("[发布闸] FAIL %s" % rel, file=sys.stderr)
+        for e in errs:
+            print("        - %s" % e, file=sys.stderr)
+    if gate_failures:
+        print("构建中止（发布闸：%d 件未通过）" % len(gate_failures), file=sys.stderr)
         return 2
 
     try:

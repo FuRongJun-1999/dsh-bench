@@ -226,6 +226,7 @@ def semantic_report(report: dict, verdict, evidence_ok: bool = True, now: str = 
         env_unsupported=env_unsupported,
         scenario_count=report.get("scenario_count"),
         security_six_threats=(report.get("security_scope") or {}).get("threats") or None,
+        cost=report.get("cost"),
         # dsh-bench#27 S2：证据层输入两条管线一致传入
         tool_results=report.get("tool_results"),
         quick_check=report.get("quick_check"),
@@ -239,6 +240,11 @@ def semantic_report(report: dict, verdict, evidence_ok: bool = True, now: str = 
         )
     if report.get("precision_ok") is not None and d.precision_ok != report.get("precision_ok"):
         errors.append("precision_ok 与复算不符：声明 %r，实为 %r" % (report.get("precision_ok"), d.precision_ok))
+
+    # 2b2) 失效须有原因（dsh-bench#28 T4）：非「有效」状态时 reason 必填
+    inv4 = report.get("invalidation") or {}
+    if verdict.is_invalidated(inv4) and not (inv4.get("reason") or "").strip():
+        errors.append("invalidation.status=%r 须填写 reason（失效必须可追溯）" % inv4.get("status"))
 
     # 2c) 安全通道对账（dsh-bench#16 G2/G3/G4）--------------------------
     events = sec.get("events") or []
@@ -435,6 +441,9 @@ def semantic_ledger(led: dict, verdict, actual_published: int = None) -> list:
         errors.append("账本月份非法：%r（须 YYYY-MM，01–12 月）" % led.get("month"))
     if led.get("failed_count", 0) > led.get("tested_count", 0):
         errors.append("账本自相矛盾：失败数 %s > 已测数 %s" % (led.get("failed_count"), led.get("tested_count")))
+    # dsh-bench#28 T1：恢复「已测 ≥ 发布」（#22 N5 重写时丢失的回归）
+    if led.get("tested_count", 0) < led.get("published_reports", 0):
+        errors.append("账本自相矛盾：已测数 %s < 发布报告数 %s" % (led.get("tested_count"), led.get("published_reports")))
     # dsh-bench#12④：published_reports 与实际已发布报告对账
     if actual_published is not None and led.get("published_reports", 0) != actual_published:
         errors.append(
@@ -550,6 +559,33 @@ def iter_data_files(data_dir: Path):
                 yield p
 
 
+def validate_tree(data_dir: Path, verdict, release: bool = False, now: str = None) -> tuple:
+    """跨文件检查（dsh-bench#28 T3）：同月账本唯一等；校验器 main 与生成器发布闸共用同一口径。"""
+    files = list(iter_data_files(data_dir))
+    failures = []
+    seen_months = {}
+    for p in files:
+        if infer_kind(p) == "ledger":
+            try:
+                d3 = _load_json_strict(p.read_text(encoding="utf-8"))
+                m3 = d3.get("month")
+                if m3 in seen_months:
+                    rel3 = p.relative_to(data_dir) if data_dir in p.parents else p
+                    failures.append((rel3, ["账本月份重复：%s 同时见于 %s 与 %s" % (m3, seen_months[m3], p.name)]))
+                else:
+                    seen_months[m3] = p.name
+            except (OSError, json.JSONDecodeError, ValueError):
+                pass
+    for p in files:
+        # dsh-bench#28 T3 边界：examples/ 是演示数据，不施 release 专属检查（官方构建本来就不含它们）
+        rel_release = release and p.parent.name != "examples"
+        ok, errors = validate_file(p, verdict, release=rel_release, now=now)
+        rel = p.relative_to(data_dir) if data_dir in p.parents else p
+        if not ok:
+            failures.append((rel, errors))
+    return failures
+
+
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description="dsh-bench 插件测评站 · 发布前检查器")
     ap.add_argument("--data-dir", default=str(ROOT / "data"))
@@ -573,31 +609,19 @@ def main(argv=None) -> int:
         print("没有可校验的数据文件（%s）——目录为空或路径写错本身即发布异常（fail-closed）" % data_dir)
         return 1
 
-    # dsh-bench#22 N5：同一月份只能有一份账本
-    seen_months = {}
-    for p in files:
-        if infer_kind(p) == "ledger":
-            try:
-                d3 = _load_json_strict(p.read_text(encoding="utf-8"))
-                m3 = d3.get("month")
-                if m3 in seen_months:
-                    print("FAIL  账本月份重复：%s 同时见于 %s 与 %s" % (m3, seen_months[m3], p.name))
-                    return 1
-                seen_months[m3] = p.name
-            except (OSError, json.JSONDecodeError, ValueError):
-                pass
-
+    failures = validate_tree(data_dir, verdict, release=args.release, now=args.as_of)
     failed = 0
+    printed = set()
+    for rel, errors in failures:
+        failed += 1
+        printed.add(str(rel))
+        print("FAIL  %s" % rel)
+        for e in errors:
+            print("        - %s" % e)
     for p in files:
         rel = p.relative_to(data_dir) if data_dir in p.parents else p
-        ok, errors = validate_file(p, verdict, release=args.release, now=args.as_of)
-        if ok:
+        if str(rel) not in printed:
             print("PASS  %s" % rel)
-        else:
-            failed += 1
-            print("FAIL  %s" % rel)
-            for e in errors:
-                print("        - %s" % e)
     print("-" * 60)
     print("共 %d 件，通过 %d，拒绝 %d（不通过即拒绝发布）" % (len(files), len(files) - failed, failed))
     return 1 if failed else 0

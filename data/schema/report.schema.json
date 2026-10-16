@@ -425,7 +425,25 @@
       }
     },
     "invalidation": {
-      "type": "object"
+      "type": "object",
+      "required": [
+        "status"
+      ],
+      "properties": {
+        "status": {
+          "type": "string",
+          "enum": [
+            "有效",
+            "证据失效",
+            "已撤回",
+            "已更正"
+          ]
+        },
+        "reason": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
     },
     "human_text": {
       "type": "object",
