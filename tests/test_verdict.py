@@ -263,7 +263,7 @@ def t29():
 
 @run_case("t30_sample_layer_valid_runs")
 def t30():
-    runs = [{"run_id": "a", "valid": True}, {"run_id": "b", "valid": False}]
+    runs = [{"run_id": "a", "validity": {"valid": True}}, {"run_id": "b", "validity": {"valid": False}}]
     valid, dropped = V.select_valid_runs(runs)
     check([r["run_id"] for r in valid] == ["a"], "有效运行筛选错误")
     check([r["run_id"] for r in dropped] == ["b"], "无效运行须作废留痕")
@@ -271,8 +271,10 @@ def t30():
 
 @run_case("t31_sample_layer_incomplete_pairs")
 def t31():
-    pairs = [{"pair_id": "p1", "b0": 1, "p": 2}, {"pair_id": "p2", "b0": 1, "p": None}]
-    check(V.incomplete_pairs(pairs) == ["p2"], "缺 B0 或 P 的配对须被识别")
+    pairs = [{"pair_id": "p1", "b0_run": "r1", "p_run": "r2"}, {"pair_id": "p2", "b0_run": "r1", "p_run": None}]
+    check(V.incomplete_pairs(pairs) == [("p2", "缺 b0_run/p_run")], "缺 b0_run/p_run 的配对须被识别")
+    pairs2 = [{"pair_id": "p3", "b0_run": "r1", "p_run": "rX"}]
+    check(V.incomplete_pairs(pairs2, run_ids=["r1", "r2"]) == [("p3", "引用不存在的运行")], "引用不存在运行须被识别")
 
 
 @run_case("t32_sample_layer_weights")
@@ -680,11 +682,11 @@ MUTATIONS = [
      "count": 2, "expect": ["t29_cost_unmeasured_not_zero"], "rule": "§5 测不到的不能填 0"},
     # --- 样本层 ---
     {"id": "V30", "target": "scripts/verdict.py", "test_file": "tests/test_verdict.py",
-     "anchor": "        (valid if r.get(\"valid\", True) else dropped).append(r)",
+     "anchor": "        (valid if is_valid else dropped).append(r)",
      "replace": "        valid.append(r)",
      "count": 1, "expect": ["t30_sample_layer_valid_runs"], "rule": "§7 无效运行混入须作废留痕"},
     {"id": "V31", "target": "scripts/verdict.py", "test_file": "tests/test_verdict.py",
-     "anchor": "        if not p.get(\"b0\") or not p.get(\"p\"):",
+     "anchor": "        if not p.get(\"b0_run\") or not p.get(\"p_run\"):",
      "replace": "        if False:",
      "count": 1, "expect": ["t31_sample_layer_incomplete_pairs"], "rule": "§7 缺失配对"},
     {"id": "V32", "target": "scripts/verdict.py", "test_file": "tests/test_verdict.py",

@@ -11,7 +11,7 @@
     "note": "远程服务无法锁定实现，只对观察窗口内行为负责；不据此声称到处安全。"
   },
   "audience": "团队",
-  "tested_depth": "体验快测",
+  "tested_depth": "未测",
   "risk_level": "未评估",
   "recommendation": "待复核",
   "permissions": [],
@@ -30,5 +30,6 @@
   "capabilities": [],
   "update_log": [],
   "report_ids": [],
-  "install_notes": "示例：解压到插件目录，重启宿主即生效（示例数据）。"
+  "install_notes": "示例：解压到插件目录，重启宿主即生效（示例数据）。",
+  "is_example": true
 }

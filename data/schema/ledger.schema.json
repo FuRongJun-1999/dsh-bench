@@ -54,6 +54,9 @@
     },
     "notes": {
       "type": "string"
+    },
+    "is_example": {
+      "type": "boolean"
     }
   }
 }

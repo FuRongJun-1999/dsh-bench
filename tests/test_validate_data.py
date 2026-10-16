@@ -768,6 +768,7 @@ def t98():
     for sub in ("reports", "plugins", "evidence", "ledger", "examples"):
         (tmp / sub).mkdir(parents=True)
     led = json.loads((ROOT / "data/ledger/ledger-2026-10.json").read_text(encoding="utf-8"))
+    led.pop("is_example", None)   # 正式账本（非示例）——官方闸才会查它
     (tmp / "ledger" / "ledger-2026-10.json").write_text(json.dumps(led, ensure_ascii=False), encoding="utf-8")
     (tmp / "ledger" / "ledger-2026-10-b.json").write_text(json.dumps(dict(led, ledger_id="ledger-2026-10-b"), ensure_ascii=False), encoding="utf-8")
     v_cli = subprocess.run([_sys.executable, "-X", "utf8", "scripts/validate_data.py", "--release", "--data-dir", str(tmp)],

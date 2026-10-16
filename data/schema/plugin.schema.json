@@ -181,6 +181,9 @@
     "install_notes": {
       "type": "string",
       "minLength": 1
+    },
+    "is_example": {
+      "type": "boolean"
     }
   }
 }

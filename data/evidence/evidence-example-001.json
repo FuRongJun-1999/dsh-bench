@@ -13,12 +13,29 @@
       "ref": "example/example-memory-plugin@0.0.0-example",
       "observable": true
     },
-    "sample_plan": {"independent_scenarios": 8, "reruns_per_scenario": 3},
-    "scenario_groups": ["场景 A", "场景 B"],
+    "sample_plan": {
+      "independent_scenarios": 8,
+      "reruns_per_scenario": 3
+    },
+    "scenario_groups": [
+      "场景 A",
+      "场景 B"
+    ],
     "order_seed": 20261001,
-    "budget": {"tokens": 0, "money": 12.0, "wall_clock_minutes": 180},
-    "thresholds": {"a": 5, "b": 5, "max_half_width": 5},
-    "stop_rule": {"fixed_sample": true, "external_fault_rerun_cap": 2},
+    "budget": {
+      "tokens": 0,
+      "money": 12,
+      "wall_clock_minutes": 180
+    },
+    "thresholds": {
+      "a": 5,
+      "b": 5,
+      "max_half_width": 5
+    },
+    "stop_rule": {
+      "fixed_sample": true,
+      "external_fault_rerun_cap": 2
+    },
     "disclosure": "无利益关系（示例）。"
   },
   "protocol_hash": "8dd51cbf75b259c5dabfdb928eb112364231b5d8f9f580759534e5d78a34d849",
@@ -32,11 +49,60 @@
     "model_version": "v1",
     "sampling": "temperature=0",
     "dependency_lock": "example-lock-v0",
-    "permissions": ["读工作区文件"],
+    "permissions": [
+      "读工作区文件"
+    ],
     "external_services": []
   },
   "pairs": [
-    {"pair_id": "pair-001", "scenario_id": "场景 A", "b0_run": "run-001", "p_run": "run-002"}
+    {
+      "pair_id": "pair-001",
+      "scenario_id": "场景 A",
+      "b0_run": "run-001",
+      "p_run": "run-002"
+    },
+    {
+      "pair_id": "pair-002",
+      "scenario_id": "场景 B",
+      "b0_run": "run-003",
+      "p_run": "run-004"
+    },
+    {
+      "pair_id": "pair-003",
+      "scenario_id": "场景 C",
+      "b0_run": "run-005",
+      "p_run": "run-006"
+    },
+    {
+      "pair_id": "pair-004",
+      "scenario_id": "场景 D",
+      "b0_run": "run-007",
+      "p_run": "run-008"
+    },
+    {
+      "pair_id": "pair-005",
+      "scenario_id": "场景 E",
+      "b0_run": "run-009",
+      "p_run": "run-010"
+    },
+    {
+      "pair_id": "pair-006",
+      "scenario_id": "场景 F",
+      "b0_run": "run-011",
+      "p_run": "run-012"
+    },
+    {
+      "pair_id": "pair-007",
+      "scenario_id": "场景 G",
+      "b0_run": "run-013",
+      "p_run": "run-014"
+    },
+    {
+      "pair_id": "pair-008",
+      "scenario_id": "场景 H",
+      "b0_run": "run-015",
+      "p_run": "run-016"
+    }
   ],
   "runs": [
     {
@@ -45,19 +111,287 @@
       "scenario_id": "场景 A",
       "condition": "B0",
       "time": "2026-10-01T10:00:00",
-      "snapshot_check": {"restored": true, "independent_check": "pass"},
-      "validity": {"valid": true, "reason": ""},
-      "costs": {"money": 4.0}
+      "snapshot_check": {
+        "restored": true,
+        "independent_check": "pass"
+      },
+      "validity": {
+        "valid": true,
+        "reason": ""
+      },
+      "costs": {
+        "money": 4
+      }
     },
     {
       "run_id": "run-002",
       "pair_id": "pair-001",
       "scenario_id": "场景 A",
       "condition": "P",
-      "time": "2026-10-01T10:20:00",
-      "snapshot_check": {"restored": true, "independent_check": "pass"},
-      "validity": {"valid": true, "reason": ""},
-      "costs": {"money": 6.0}
+      "time": "2026-10-01T11:00:00",
+      "snapshot_check": {
+        "restored": true,
+        "independent_check": "pass"
+      },
+      "validity": {
+        "valid": true,
+        "reason": ""
+      },
+      "costs": {
+        "money": 6
+      }
+    },
+    {
+      "run_id": "run-003",
+      "pair_id": "pair-002",
+      "scenario_id": "场景 B",
+      "condition": "B0",
+      "time": "2026-10-01T10:00:00",
+      "snapshot_check": {
+        "restored": true,
+        "independent_check": "pass"
+      },
+      "validity": {
+        "valid": true,
+        "reason": ""
+      },
+      "costs": {
+        "money": 4
+      }
+    },
+    {
+      "run_id": "run-004",
+      "pair_id": "pair-002",
+      "scenario_id": "场景 B",
+      "condition": "P",
+      "time": "2026-10-01T11:00:00",
+      "snapshot_check": {
+        "restored": true,
+        "independent_check": "pass"
+      },
+      "validity": {
+        "valid": true,
+        "reason": ""
+      },
+      "costs": {
+        "money": 6
+      }
+    },
+    {
+      "run_id": "run-005",
+      "pair_id": "pair-003",
+      "scenario_id": "场景 C",
+      "condition": "B0",
+      "time": "2026-10-01T10:00:00",
+      "snapshot_check": {
+        "restored": true,
+        "independent_check": "pass"
+      },
+      "validity": {
+        "valid": true,
+        "reason": ""
+      },
+      "costs": {
+        "money": 4
+      }
+    },
+    {
+      "run_id": "run-006",
+      "pair_id": "pair-003",
+      "scenario_id": "场景 C",
+      "condition": "P",
+      "time": "2026-10-01T11:00:00",
+      "snapshot_check": {
+        "restored": true,
+        "independent_check": "pass"
+      },
+      "validity": {
+        "valid": true,
+        "reason": ""
+      },
+      "costs": {
+        "money": 6
+      }
+    },
+    {
+      "run_id": "run-007",
+      "pair_id": "pair-004",
+      "scenario_id": "场景 D",
+      "condition": "B0",
+      "time": "2026-10-01T10:00:00",
+      "snapshot_check": {
+        "restored": true,
+        "independent_check": "pass"
+      },
+      "validity": {
+        "valid": true,
+        "reason": ""
+      },
+      "costs": {
+        "money": 4
+      }
+    },
+    {
+      "run_id": "run-008",
+      "pair_id": "pair-004",
+      "scenario_id": "场景 D",
+      "condition": "P",
+      "time": "2026-10-01T11:00:00",
+      "snapshot_check": {
+        "restored": true,
+        "independent_check": "pass"
+      },
+      "validity": {
+        "valid": true,
+        "reason": ""
+      },
+      "costs": {
+        "money": 6
+      }
+    },
+    {
+      "run_id": "run-009",
+      "pair_id": "pair-005",
+      "scenario_id": "场景 E",
+      "condition": "B0",
+      "time": "2026-10-01T10:00:00",
+      "snapshot_check": {
+        "restored": true,
+        "independent_check": "pass"
+      },
+      "validity": {
+        "valid": true,
+        "reason": ""
+      },
+      "costs": {
+        "money": 4
+      }
+    },
+    {
+      "run_id": "run-010",
+      "pair_id": "pair-005",
+      "scenario_id": "场景 E",
+      "condition": "P",
+      "time": "2026-10-01T11:00:00",
+      "snapshot_check": {
+        "restored": true,
+        "independent_check": "pass"
+      },
+      "validity": {
+        "valid": true,
+        "reason": ""
+      },
+      "costs": {
+        "money": 6
+      }
+    },
+    {
+      "run_id": "run-011",
+      "pair_id": "pair-006",
+      "scenario_id": "场景 F",
+      "condition": "B0",
+      "time": "2026-10-01T10:00:00",
+      "snapshot_check": {
+        "restored": true,
+        "independent_check": "pass"
+      },
+      "validity": {
+        "valid": true,
+        "reason": ""
+      },
+      "costs": {
+        "money": 4
+      }
+    },
+    {
+      "run_id": "run-012",
+      "pair_id": "pair-006",
+      "scenario_id": "场景 F",
+      "condition": "P",
+      "time": "2026-10-01T11:00:00",
+      "snapshot_check": {
+        "restored": true,
+        "independent_check": "pass"
+      },
+      "validity": {
+        "valid": true,
+        "reason": ""
+      },
+      "costs": {
+        "money": 6
+      }
+    },
+    {
+      "run_id": "run-013",
+      "pair_id": "pair-007",
+      "scenario_id": "场景 G",
+      "condition": "B0",
+      "time": "2026-10-01T10:00:00",
+      "snapshot_check": {
+        "restored": true,
+        "independent_check": "pass"
+      },
+      "validity": {
+        "valid": true,
+        "reason": ""
+      },
+      "costs": {
+        "money": 4
+      }
+    },
+    {
+      "run_id": "run-014",
+      "pair_id": "pair-007",
+      "scenario_id": "场景 G",
+      "condition": "P",
+      "time": "2026-10-01T11:00:00",
+      "snapshot_check": {
+        "restored": true,
+        "independent_check": "pass"
+      },
+      "validity": {
+        "valid": true,
+        "reason": ""
+      },
+      "costs": {
+        "money": 6
+      }
+    },
+    {
+      "run_id": "run-015",
+      "pair_id": "pair-008",
+      "scenario_id": "场景 H",
+      "condition": "B0",
+      "time": "2026-10-01T10:00:00",
+      "snapshot_check": {
+        "restored": true,
+        "independent_check": "pass"
+      },
+      "validity": {
+        "valid": true,
+        "reason": ""
+      },
+      "costs": {
+        "money": 4
+      }
+    },
+    {
+      "run_id": "run-016",
+      "pair_id": "pair-008",
+      "scenario_id": "场景 H",
+      "condition": "P",
+      "time": "2026-10-01T11:00:00",
+      "snapshot_check": {
+        "restored": true,
+        "independent_check": "pass"
+      },
+      "validity": {
+        "valid": true,
+        "reason": ""
+      },
+      "costs": {
+        "money": 6
+      }
     }
   ],
   "analysis": {
@@ -65,14 +399,27 @@
     "method": "配对差值 percentile bootstrap（按场景聚合后重采样场景）",
     "seed": 20261001,
     "rng": "python random.Random(seed)",
-    "library_versions": {"python": "3.x-stdlib"},
+    "library_versions": {
+      "python": "3.x-stdlib"
+    },
     "bootstrap_resamples": 10000,
     "percentile_method": "linear interpolation (numpy default)",
     "scenario_aggregation": "先在场景内汇总重复运行，再重采样场景",
-    "scores": {"b0_mean": 60, "p_mean": 70},
-    "result": {"L": 6, "U": 10, "half_width": 2}
+    "scores": {
+      "b0_mean": 60,
+      "p_mean": 70
+    },
+    "result": {
+      "L": 6,
+      "U": 10,
+      "half_width": 2
+    }
   },
-  "review": {"reviewer": "复核者乙", "independent": true, "reviewed_at": "2026-10-02"},
+  "review": {
+    "reviewer": "复核者乙",
+    "independent": true,
+    "reviewed_at": "2026-10-02"
+  },
   "public_redacted": {
     "redacted": true,
     "original_retention_days": 90,
@@ -81,9 +428,17 @@
     "note": "示例：公开件已脱敏；原件受控保存 90 天。"
   },
   "minimal_proof": {
-    "correctness": ["输入、实际产物和验收结果已登记"],
-    "cost": ["计量来源：示例账目"],
-    "security": ["事件、权限上下文和独立佐证（示例）"],
-    "state_restore": ["恢复清单 + 独立检查"]
+    "correctness": [
+      "输入、实际产物和验收结果已登记"
+    ],
+    "cost": [
+      "计量来源：示例账目"
+    ],
+    "security": [
+      "事件、权限上下文和独立佐证（示例）"
+    ],
+    "state_restore": [
+      "恢复清单 + 独立检查"
+    ]
   }
 }

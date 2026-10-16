@@ -60,6 +60,48 @@
       "scenario_id": "场景 A",
       "b0_run": "run-001",
       "p_run": "run-002"
+    },
+    {
+      "pair_id": "pair-002",
+      "scenario_id": "场景 B",
+      "b0_run": "run-003",
+      "p_run": "run-004"
+    },
+    {
+      "pair_id": "pair-003",
+      "scenario_id": "场景 C",
+      "b0_run": "run-005",
+      "p_run": "run-006"
+    },
+    {
+      "pair_id": "pair-004",
+      "scenario_id": "场景 D",
+      "b0_run": "run-007",
+      "p_run": "run-008"
+    },
+    {
+      "pair_id": "pair-005",
+      "scenario_id": "场景 E",
+      "b0_run": "run-009",
+      "p_run": "run-010"
+    },
+    {
+      "pair_id": "pair-006",
+      "scenario_id": "场景 F",
+      "b0_run": "run-011",
+      "p_run": "run-012"
+    },
+    {
+      "pair_id": "pair-007",
+      "scenario_id": "场景 G",
+      "b0_run": "run-013",
+      "p_run": "run-014"
+    },
+    {
+      "pair_id": "pair-008",
+      "scenario_id": "场景 H",
+      "b0_run": "run-015",
+      "p_run": "run-016"
     }
   ],
   "runs": [
@@ -86,7 +128,259 @@
       "pair_id": "pair-001",
       "scenario_id": "场景 A",
       "condition": "P",
-      "time": "2026-10-01T10:20:00",
+      "time": "2026-10-01T11:00:00",
+      "snapshot_check": {
+        "restored": true,
+        "independent_check": "pass"
+      },
+      "validity": {
+        "valid": true,
+        "reason": ""
+      },
+      "costs": {
+        "money": 6
+      }
+    },
+    {
+      "run_id": "run-003",
+      "pair_id": "pair-002",
+      "scenario_id": "场景 B",
+      "condition": "B0",
+      "time": "2026-10-01T10:00:00",
+      "snapshot_check": {
+        "restored": true,
+        "independent_check": "pass"
+      },
+      "validity": {
+        "valid": true,
+        "reason": ""
+      },
+      "costs": {
+        "money": 4
+      }
+    },
+    {
+      "run_id": "run-004",
+      "pair_id": "pair-002",
+      "scenario_id": "场景 B",
+      "condition": "P",
+      "time": "2026-10-01T11:00:00",
+      "snapshot_check": {
+        "restored": true,
+        "independent_check": "pass"
+      },
+      "validity": {
+        "valid": true,
+        "reason": ""
+      },
+      "costs": {
+        "money": 6
+      }
+    },
+    {
+      "run_id": "run-005",
+      "pair_id": "pair-003",
+      "scenario_id": "场景 C",
+      "condition": "B0",
+      "time": "2026-10-01T10:00:00",
+      "snapshot_check": {
+        "restored": true,
+        "independent_check": "pass"
+      },
+      "validity": {
+        "valid": true,
+        "reason": ""
+      },
+      "costs": {
+        "money": 4
+      }
+    },
+    {
+      "run_id": "run-006",
+      "pair_id": "pair-003",
+      "scenario_id": "场景 C",
+      "condition": "P",
+      "time": "2026-10-01T11:00:00",
+      "snapshot_check": {
+        "restored": true,
+        "independent_check": "pass"
+      },
+      "validity": {
+        "valid": true,
+        "reason": ""
+      },
+      "costs": {
+        "money": 6
+      }
+    },
+    {
+      "run_id": "run-007",
+      "pair_id": "pair-004",
+      "scenario_id": "场景 D",
+      "condition": "B0",
+      "time": "2026-10-01T10:00:00",
+      "snapshot_check": {
+        "restored": true,
+        "independent_check": "pass"
+      },
+      "validity": {
+        "valid": true,
+        "reason": ""
+      },
+      "costs": {
+        "money": 4
+      }
+    },
+    {
+      "run_id": "run-008",
+      "pair_id": "pair-004",
+      "scenario_id": "场景 D",
+      "condition": "P",
+      "time": "2026-10-01T11:00:00",
+      "snapshot_check": {
+        "restored": true,
+        "independent_check": "pass"
+      },
+      "validity": {
+        "valid": true,
+        "reason": ""
+      },
+      "costs": {
+        "money": 6
+      }
+    },
+    {
+      "run_id": "run-009",
+      "pair_id": "pair-005",
+      "scenario_id": "场景 E",
+      "condition": "B0",
+      "time": "2026-10-01T10:00:00",
+      "snapshot_check": {
+        "restored": true,
+        "independent_check": "pass"
+      },
+      "validity": {
+        "valid": true,
+        "reason": ""
+      },
+      "costs": {
+        "money": 4
+      }
+    },
+    {
+      "run_id": "run-010",
+      "pair_id": "pair-005",
+      "scenario_id": "场景 E",
+      "condition": "P",
+      "time": "2026-10-01T11:00:00",
+      "snapshot_check": {
+        "restored": true,
+        "independent_check": "pass"
+      },
+      "validity": {
+        "valid": true,
+        "reason": ""
+      },
+      "costs": {
+        "money": 6
+      }
+    },
+    {
+      "run_id": "run-011",
+      "pair_id": "pair-006",
+      "scenario_id": "场景 F",
+      "condition": "B0",
+      "time": "2026-10-01T10:00:00",
+      "snapshot_check": {
+        "restored": true,
+        "independent_check": "pass"
+      },
+      "validity": {
+        "valid": true,
+        "reason": ""
+      },
+      "costs": {
+        "money": 4
+      }
+    },
+    {
+      "run_id": "run-012",
+      "pair_id": "pair-006",
+      "scenario_id": "场景 F",
+      "condition": "P",
+      "time": "2026-10-01T11:00:00",
+      "snapshot_check": {
+        "restored": true,
+        "independent_check": "pass"
+      },
+      "validity": {
+        "valid": true,
+        "reason": ""
+      },
+      "costs": {
+        "money": 6
+      }
+    },
+    {
+      "run_id": "run-013",
+      "pair_id": "pair-007",
+      "scenario_id": "场景 G",
+      "condition": "B0",
+      "time": "2026-10-01T10:00:00",
+      "snapshot_check": {
+        "restored": true,
+        "independent_check": "pass"
+      },
+      "validity": {
+        "valid": true,
+        "reason": ""
+      },
+      "costs": {
+        "money": 4
+      }
+    },
+    {
+      "run_id": "run-014",
+      "pair_id": "pair-007",
+      "scenario_id": "场景 G",
+      "condition": "P",
+      "time": "2026-10-01T11:00:00",
+      "snapshot_check": {
+        "restored": true,
+        "independent_check": "pass"
+      },
+      "validity": {
+        "valid": true,
+        "reason": ""
+      },
+      "costs": {
+        "money": 6
+      }
+    },
+    {
+      "run_id": "run-015",
+      "pair_id": "pair-008",
+      "scenario_id": "场景 H",
+      "condition": "B0",
+      "time": "2026-10-01T10:00:00",
+      "snapshot_check": {
+        "restored": true,
+        "independent_check": "pass"
+      },
+      "validity": {
+        "valid": true,
+        "reason": ""
+      },
+      "costs": {
+        "money": 4
+      }
+    },
+    {
+      "run_id": "run-016",
+      "pair_id": "pair-008",
+      "scenario_id": "场景 H",
+      "condition": "P",
+      "time": "2026-10-01T11:00:00",
       "snapshot_check": {
         "restored": true,
         "independent_check": "pass"

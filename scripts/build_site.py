@@ -303,24 +303,25 @@ def build_evidence_index(data_dir: Path) -> dict:
 _NOW = None  # dsh-bench#8①：构建时钟（--as-of，缺省今天），写入 build-manifest.json
 
 
-def _ver_key(ref: str):
-    """从 plugin_identity.ref 提取可比较版本键（dsh-bench#27 S4b）。
-    去 v 前缀；预发布段（-rcN 等）小于正式版；无法解析时抛 BuildError（fail-closed，不静默平局）。"""
-    tail = str(ref).rsplit("@", 1)[-1] if "@" in str(ref) else ""
-    if tail.startswith(("v", "V")):
-        tail = tail[1:]
-    core, _, pre = tail.partition("-")
-    parts = []
-    for seg in core.split("."):
-        if seg.isdigit():
-            parts.append(int(seg))
-        else:
-            raise BuildError("plugin_identity.ref 版本不可解析：%r（须 x.y.z[-pre]，版本取舍需要可比较的版本号）" % ref)
-    key = tuple(parts) or (0,)
-    # 预发布 < 正式：正式版尾段追加一个大数（INF 效果）
-    if pre:
-        return key + (-1,)
-    return key + (10**9,)
+def _ver_key(ref: str, form: str = None, tested_at: str = None):
+    """版本比较键（dsh-bench#30 V3）：按交付形态分——
+    发布包版 → 语义版本（去 v 前缀、预发布段 < 正式、不可解析 fail-closed）；
+    源码版/远程服务版 → (tested_at, report_version)（手册 §身份：commit SHA/端点+观测日期不是 x.y.z，禁止虚构版本号）。"""
+    if form in (None, "发布包版"):
+        tail = str(ref).rsplit("@", 1)[-1] if "@" in str(ref) else ""
+        if tail.startswith(("v", "V")):
+            tail = tail[1:]
+        core, _, pre = tail.partition("-")
+        parts = []
+        for seg in core.split("."):
+            if seg.isdigit():
+                parts.append(int(seg))
+            else:
+                raise BuildError("发布包版 plugin_identity.ref 版本不可解析：%r（须 x.y.z[-pre]）" % ref)
+        key = tuple(parts) or (0,)
+        return key + ((-1,) if pre else (10**9,))
+    # 源码版 / 远程服务版：按测完日期比较（同日再看 report_version，由调用方追加）
+    return (str(tested_at or ""),)
 
 
 def load_data(data_dir: Path, include_examples: bool) -> dict:
@@ -332,18 +333,28 @@ def load_data(data_dir: Path, include_examples: bool) -> dict:
     for r in reports:
         if r["plugin_id"] not in registered:
             raise BuildError("%s: 插件 %r 未在 data/plugins/ 登记，不得进榜（先登记插件再发报告）" % (r.get("_source"), r["plugin_id"]))
-    # dsh-bench#12②：同一插件同一域只取最高版本进榜，旧版本转入不参加排名区
+    # dsh-bench#12② + #30 V3：同插件同域多版本才做版本取舍；比较键按交付形态分——
+    # 发布包版用语义版本，源码版/远程服务版按测完日期（手册：commit SHA/端点+观测日期不是 x.y.z，禁止虚构版本号）
+    groups_by_key = {}
+    for r in reports:
+        groups_by_key.setdefault((r["plugin_id"], r["domain"]), []).append(r)
     best = {}
+    for key, rs in groups_by_key.items():
+        if len(rs) < 2:
+            continue
+        for r in rs:
+            ident = r.get("plugin_identity") or {}
+            ref = ident.get("ref") or ""
+            form = ident.get("form")
+            ver = r.get("report_version")
+            rv = ver if isinstance(ver, int) else 0
+            k = _ver_key(ref, form, r.get("tested_at")) + (rv,)
+            if key not in best or k > best[key][0]:
+                best[key] = (k, ref, r)
     for r in reports:
         key = (r["plugin_id"], r["domain"])
-        ref = (r.get("plugin_identity") or {}).get("ref") or ""
-        ver = r.get("report_version")
-        rv = ver if isinstance(ver, int) else 0
-        k = _ver_key(ref) + (rv,)
-        if key not in best or k > best[key][0]:
-            best[key] = (k, ref, r)
-    for r in reports:
-        key = (r["plugin_id"], r["domain"])
+        if key not in best:
+            continue
         _, top_ref, top_r = best[key]
         if r is not top_r:
             r["_superseded_by"] = top_ref
@@ -510,11 +521,10 @@ def build(out_dir: Path, data: dict) -> list:
     marker = out_dir / "build-manifest.json"
     if out_dir.exists() and any(out_dir.iterdir()) and not marker.exists():
         raise BuildError("%s 非空且不是本工具的产物（缺 build-manifest.json），拒绝清空" % out_dir)
-    # dsh-bench#25 F2：先写临时目录，全部成功后原子替换——中途 BuildError 时旧产物原样保留
+    # dsh-bench#25 F2 + #30 V1/V2：先写临时目录（从空开始——旧产物不拷贝，撤下的页面不再残留）；
+    # 父目录不存在则创建；失败时 try/finally 清理 staging
+    out_dir.parent.mkdir(parents=True, exist_ok=True)
     staging = Path(tempfile.mkdtemp(prefix=".dsh-build-", dir=out_dir.parent))
-    if out_dir.exists():
-        # 静态资源沿用旧产物，避免 staging 缺文件
-        shutil.copytree(out_dir, staging, dirs_exist_ok=True)
     real_out = out_dir
     out_dir = staging
     (out_dir / "static").mkdir(exist_ok=True)
@@ -876,7 +886,18 @@ def main(argv=None) -> int:
     _VD = _load_validate_data()
     data_dir_path = Path(args.data_dir)
     # dsh-bench#28 T3：发布闸与校验器共用 validate_tree（跨文件检查同口径）；插件在官方构建按 release 口径
-    gate_failures = _VD.validate_tree(data_dir_path, V, release=args.official_only, now=_NOW)
+    # dsh-bench#31 W2：官方构建不含示例数据——is_example 文件不进闸也不进产物（排除在先，而非拒绝）
+    example_files = set()
+    for sub in ("reports", "plugins", "evidence", "ledger", "examples"):
+        for p in sorted((data_dir_path / sub).glob("*.json")):
+            try:
+                doc = _VD._load_json_strict(p.read_text(encoding="utf-8"))
+            except Exception:
+                continue
+            if isinstance(doc, dict) and doc.get("is_example"):
+                example_files.add(str(p))
+    gate_files = [p for sub in ("reports", "plugins", "evidence", "ledger") for p in sorted((data_dir_path / sub).glob("*.json")) if str(p) not in example_files]
+    gate_failures = _VD.validate_tree(data_dir_path, V, release=args.official_only, now=_NOW, _gate_files=gate_files)
     for rel, errs in gate_failures:
         print("[发布闸] FAIL %s" % rel, file=sys.stderr)
         for e in errs:
@@ -890,6 +911,10 @@ def main(argv=None) -> int:
     except BuildError as exc:
         print("构建中止（fail-closed）：%s" % exc, file=sys.stderr)
         return 2
+    # dsh-bench#31 W2：官方构建不含任何 is_example 数据（插件/账本与报告同口径）
+    if args.official_only:
+        data["plugins"] = [p for p in data["plugins"] if not p.get("is_example")]
+        data["ledger"] = [l for l in data["ledger"] if not l.get("is_example")]
     try:
         written = build(Path(args.out), data)
     except BuildError as exc:

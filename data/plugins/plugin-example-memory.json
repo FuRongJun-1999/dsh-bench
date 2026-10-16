@@ -37,5 +37,6 @@
   "report_ids": [
     "example-report-memory-001"
   ],
-  "install_notes": "示例：解压到插件目录，重启宿主即生效（示例数据）。"
+  "install_notes": "示例：解压到插件目录，重启宿主即生效（示例数据）。",
+  "is_example": true
 }

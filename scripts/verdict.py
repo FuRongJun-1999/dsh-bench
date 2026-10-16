@@ -799,19 +799,28 @@ def incremental_unit_success_cost(
 
 
 def select_valid_runs(runs: Iterable[dict]) -> tuple:
-    """剔除无效运行（判分器故障/环境崩），返回 (有效运行, 被剔除的运行)。"""
+    """剔除无效运行（判分器故障/环境崩），返回 (有效运行, 被剔除的运行)。
+    dsh-bench#30 V5：字段名对齐证据格式——runs[].validity.valid。"""
     valid, dropped = [], []
     for r in runs:
-        (valid if r.get("valid", True) else dropped).append(r)
+        is_valid = ((r.get("validity") or {}).get("valid", True))
+        (valid if is_valid else dropped).append(r)
     return valid, dropped
 
 
-def incomplete_pairs(pairs: Iterable[dict]) -> list:
-    """找出缺 B0 或 P 的配对：缺失配对不得计入样本，须留痕。"""
+def incomplete_pairs(pairs: Iterable[dict], run_ids: Iterable[str] = None) -> list:
+    """找出缺 B0 或 P 的配对（dsh-bench#30 V5）：字段对齐证据格式（b0_run/p_run）；
+    run_ids 给定时另查配对引用的运行是否存在。"""
+    ids = set(run_ids or [])
     missing = []
     for p in pairs:
-        if not p.get("b0") or not p.get("p"):
-            missing.append(p.get("pair_id"))
+        problems = []
+        if not p.get("b0_run") or not p.get("p_run"):
+            problems.append("缺 b0_run/p_run")
+        if ids and ((p.get("b0_run") and p["b0_run"] not in ids) or (p.get("p_run") and p["p_run"] not in ids)):
+            problems.append("引用不存在的运行")
+        if problems:
+            missing.append((p.get("pair_id"), "；".join(problems)))
     return missing
 
 

@@ -250,6 +250,9 @@ def semantic_report(report: dict, verdict, evidence_ok: bool = True, now: str = 
     events = sec.get("events") or []
     if events and sec.get("status") == "未发现问题":
         errors.append("安全对账不符：events 记录了 %d 条事件，status 却为「未发现问题」" % len(events))
+    # dsh-bench#31 W3：已确认事件/调查中须有事件记录（G2 反方向）
+    if sec.get("status") in ("已确认事件", "调查中") and not events:
+        errors.append("安全对账不符：status=%r 须有 events 记录（0 条 = 无从复核）" % sec.get("status"))
     if sec.get("status") == "调查中":
         started = sec.get("investigation_started_at")
         if not started:
@@ -257,9 +260,12 @@ def semantic_report(report: dict, verdict, evidence_ok: bool = True, now: str = 
         else:
             try:
                 sd = datetime.strptime(str(started), "%Y-%m-%d").date()
-                age = (date.today() - sd).days
-                if age > 14:
-                    errors.append("调查已 %d 天（起于 %s）：超过 14 天期限，须升级处置或关闭调查" % (age, started))
+                if sd > date.today():
+                    errors.append("investigation_started_at 在未来：%s（今天 %s）" % (started, date.today().isoformat()))
+                else:
+                    age = (date.today() - sd).days
+                    if age > 14:
+                        errors.append("调查已 %d 天（起于 %s）：超过 14 天期限，须升级处置或关闭调查" % (age, started))
             except ValueError:
                 errors.append("investigation_started_at 格式非法：%r（须 YYYY-MM-DD）" % started)
     rv = (report.get("review") or {}).get("reviewed_at")
@@ -270,6 +276,8 @@ def semantic_report(report: dict, verdict, evidence_ok: bool = True, now: str = 
                 td = datetime.strptime(ta, "%Y-%m-%d").date()
                 if rd_ < td:
                     errors.append("reviewed_at %s 早于 tested_at %s（复核不得早于测完）" % (rv, ta))
+            if rd_ > date.today():
+                errors.append("reviewed_at 在未来：%s（今天 %s）" % (rv, date.today().isoformat()))
         except ValueError:
             errors.append("reviewed_at 格式非法：%r（须 YYYY-MM-DD）" % rv)
 
@@ -456,6 +464,35 @@ def semantic_ledger(led: dict, verdict, actual_published: int = None) -> list:
 # ------------------------------------------------------------- 证据链（dsh-bench#7）
 
 
+def evidence_content_errors(report: dict, ev: dict, verdict) -> list:
+    """报告数值 ↔ 证据内容对账（dsh-bench#29 F1）：同一实验的证据写什么，报告就得是什么。"""
+    errs = []
+    res = (ev.get("analysis") or {}).get("result") or {}
+    sc = (ev.get("analysis") or {}).get("scores") or {}
+    iv = report.get("interval") or {}
+    for k in ("L", "U"):
+        if iv.get(k) is not None and _num(res.get(k)) != _num(iv.get(k)):
+            errs.append("区间 %s 与证据 analysis.result 不符：报告 %r，证据 %r" % (k, iv.get(k), res.get(k)))
+    for rk, ek in (("b0_score", "b0_mean"), ("p_score", "p_mean")):
+        if report.get(rk) is not None and _num(sc.get(ek)) != _num(report.get(rk)):
+            errs.append("%s 与证据 scores.%s 不符：报告 %r，证据 %r" % (rk, ek, report.get(rk), sc.get(ek)))
+    scen = {r2.get("scenario_id") for r2 in ev.get("runs") or []}
+    if report.get("scenario_count") not in (None, 0) and report["scenario_count"] > len(scen):
+        errs.append("scenario_count=%s 多于证据 runs 覆盖的场景数 %d（样本量不得自填）" % (report["scenario_count"], len(scen)))
+    pub = ev.get("public_redacted") or {}
+    rev_e = report.get("evidence") or {}
+    if bool(pub.get("original_deleted")) != bool(rev_e.get("original_deleted")) or \
+       bool(pub.get("redacted_evidence_sufficient", True)) != bool(rev_e.get("redacted_evidence_sufficient", True)):
+        errs.append("证据核验受限状态与证据 public_redacted 不符")
+    th = (ev.get("manifest") or {}).get("thresholds") or {}
+    for k, frozen in (("a", verdict.A_DEFAULT), ("b", verdict.B_DEFAULT), ("max_half_width", verdict.MAX_HALF_WIDTH_DEFAULT)):
+        if _num(th.get(k)) != frozen:
+            errs.append("证据预注册门槛 %s=%r 与平台冻结值 %s 不符" % (k, th.get(k), frozen))
+    if (ev.get("review") or {}).get("independent") is False and (report.get("review") or {}).get("independent"):
+        errs.append("证据记录为非独立复核，报告却写 independent=True")
+    return errs
+
+
 def _resolve_evidence(report_path: Path, report: dict, verdict) -> tuple:
     """evidence_id 必须解析到 data/evidence/ 下的真实文件；证据自身校验不通过 → 引用它的报告不得发布。"""
     eid = (report.get("evidence") or {}).get("evidence_id")
@@ -474,6 +511,10 @@ def _resolve_evidence(report_path: Path, report: dict, verdict) -> tuple:
         ok, ev_errors = validate_file(p, verdict, release=False)
         if not ok:
             return False, ["证据文件 %s 自身校验未通过，引用它的报告不得发布：%s" % (p.name, "；".join(ev_errors[:3]))]
+        # dsh-bench#29 F1：报告数值与证据内容对账
+        content_errs = evidence_content_errors(report, d, verdict)
+        if content_errs:
+            return False, ["报告数值与证据 %s 不符：%s" % (eid, "；".join(content_errs[:3]))]
         return True, []
     return False, ["证据 %r 悬空：data/evidence/ 下无 evidence_id 匹配的文件" % eid]
 
@@ -532,9 +573,13 @@ def _validate_file_impl(path: Path, verdict, release: bool = False, now: str = N
         errors += semantic_evidence(data, verdict)
     elif kind == "plugin":
         errors += semantic_plugin(data, verdict)
-        if release and data.get("tested_depth") in (None, "未测", "作者自测"):
-            errors.append("发布检查：tested_depth=%r 不足以上能力榜" % data.get("tested_depth"))
+        # dsh-bench#30 V4：插件「测到哪」由报告推导（#10）；插件 JSON 手填值不再作为发布门槛
+        if release and data.get("is_example"):
+            errors.append("发布检查：示例插件不得作为正式插件发布（is_example）")
     elif kind == "ledger":
+        # dsh-bench#31 W2：示例账目不得作为正式发布
+        if release and data.get("is_example"):
+            errors.append("发布检查：示例账目不得作为正式发布（is_example）")
         # dsh-bench#27 S1：对账按账本月份——只统计 tested_at 落在该月的正式报告
         actual = 0
         rep_dir = path.parent.parent / "reports"
@@ -559,23 +604,49 @@ def iter_data_files(data_dir: Path):
                 yield p
 
 
-def validate_tree(data_dir: Path, verdict, release: bool = False, now: str = None) -> tuple:
-    """跨文件检查（dsh-bench#28 T3）：同月账本唯一等；校验器 main 与生成器发布闸共用同一口径。"""
+def validate_tree(data_dir: Path, verdict, release: bool = False, now: str = None, _gate_files: list = None) -> tuple:
+    """跨文件检查（dsh-bench#28 T3 / #31 W1）：同月账本唯一、月份覆盖、不早于今天；两条入口共用。
+    _gate_files：发布闸传入的受检文件清单（官方构建已排除 is_example 数据——
+    月度覆盖对账也只在受检文件上进行，示例月份不参与）。"""
     files = list(iter_data_files(data_dir))
+    if _gate_files is not None:
+        gate_set = {str(p) for p in _gate_files}
+        files = [p for p in files if str(p) in gate_set]
     failures = []
+    today = date.today()
     seen_months = {}
+    report_months = set()
     for p in files:
-        if infer_kind(p) == "ledger":
+        kind = infer_kind(p)
+        try:
+            d3 = _load_json_strict(p.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError, ValueError):
+            d3 = None
+        if kind == "ledger" and d3:
+            m3 = str(d3.get("month") or "")
+            if m3 in seen_months:
+                rel3 = p.relative_to(data_dir) if data_dir in p.parents else p
+                failures.append((rel3, ["账本月份重复：%s 同时见于 %s 与 %s" % (m3, seen_months[m3], p.name)]))
+            else:
+                seen_months[m3] = p.name
+            # dsh-bench#31 W1：未来月份照收 → 拒
             try:
-                d3 = _load_json_strict(p.read_text(encoding="utf-8"))
-                m3 = d3.get("month")
-                if m3 in seen_months:
+                if m3 and datetime.strptime(m3 + "-01", "%Y-%m-%d").date() > today:
                     rel3 = p.relative_to(data_dir) if data_dir in p.parents else p
-                    failures.append((rel3, ["账本月份重复：%s 同时见于 %s 与 %s" % (m3, seen_months[m3], p.name)]))
-                else:
-                    seen_months[m3] = p.name
-            except (OSError, json.JSONDecodeError, ValueError):
+                    failures.append((rel3, ["账本月份 %s 在未来（今天 %s）：不得预写未发生的账目" % (m3, today.isoformat())]))
+            except ValueError:
                 pass
+            # ledger_id 须与 month 一致
+            if d3.get("ledger_id") and d3.get("ledger_id") != "ledger-" + m3:
+                rel3 = p.relative_to(data_dir) if data_dir in p.parents else p
+                failures.append((rel3, ["ledger_id=%r 与 month=%r 不一致（须 ledger-<月份>）" % (d3.get("ledger_id"), m3)]))
+        if kind == "report" and isinstance(d3, dict) and d3.get("report_status") == "正式":
+            ta = str(d3.get("tested_at") or "")
+            if ta[:7]:
+                report_months.add(ta[:7])
+    # dsh-bench#31 W1：有正式报告的月份必须有账本
+    for m4 in sorted(report_months - set(seen_months)):
+        failures.append((Path("<missing>"), ["月份 %s 有正式报告但没有账本（月度账本须每月公开）" % m4]))
     for p in files:
         # dsh-bench#28 T3 边界：examples/ 是演示数据，不施 release 专属检查（官方构建本来就不含它们）
         rel_release = release and p.parent.name != "examples"
