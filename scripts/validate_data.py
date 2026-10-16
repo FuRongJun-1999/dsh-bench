@@ -157,7 +157,7 @@ def _load_json_strict(text: str):
     return json.loads(text, parse_constant=_reject_constant)
 
 
-def semantic_report(report: dict, verdict, evidence_ok: bool = True) -> list:
+def semantic_report(report: dict, verdict, evidence_ok: bool = True, now: str = None) -> list:
     """复算：状态/半宽/到期日/成本分母，全部由数据算出，拒绝手填。"""
     errors = []
     iv = report.get("interval") or {}
@@ -214,7 +214,7 @@ def semantic_report(report: dict, verdict, evidence_ok: bool = True) -> list:
         confirmed_severe_security_event=sec.get("status") == "已确认事件",
         security_investigation=sec.get("status") == "调查中",
         tested_at=report.get("tested_at"),
-        now=date.today().isoformat(),
+        now=now or date.today().isoformat(),
         original_deleted=bool(ev.get("original_deleted")),
         redacted_evidence_sufficient=bool(ev.get("redacted_evidence_sufficient", True)),
         depth=report.get("depth", verdict.DEPTH_STANDARD),
@@ -226,6 +226,10 @@ def semantic_report(report: dict, verdict, evidence_ok: bool = True) -> list:
         env_unsupported=env_unsupported,
         scenario_count=report.get("scenario_count"),
         security_six_threats=(report.get("security_scope") or {}).get("threats") or None,
+        # dsh-bench#27 S2：证据层输入两条管线一致传入
+        tool_results=report.get("tool_results"),
+        quick_check=report.get("quick_check"),
+        risk_level=report.get("risk_level"),
     )
     declared = report.get("capability_state")
     if declared != d.capability_state:
@@ -482,7 +486,15 @@ def infer_kind(path: Path) -> str:
     return DIR_KIND.get(path.parent.name, "")
 
 
-def validate_file(path: Path, verdict, release: bool = False) -> tuple:
+def validate_file(path: Path, verdict, release: bool = False, now: str = None) -> tuple:
+    # dsh-bench#27 S5：隔离收口在本体——两条入口（CLI main / 生成器发布闸）自动一致
+    try:
+        return _validate_file_impl(path, verdict, release=release, now=now)
+    except Exception as exc:
+        return False, ["校验器内部异常：%s: %s" % (type(exc).__name__, exc)]
+
+
+def _validate_file_impl(path: Path, verdict, release: bool = False, now: str = None) -> tuple:
     kind = infer_kind(path)
     if not kind:
         return False, ["无法从所在目录推断类型（须位于 reports/、examples/、plugins/、evidence/、ledger/ 之一）"]
@@ -502,7 +514,7 @@ def validate_file(path: Path, verdict, release: bool = False) -> tuple:
     if kind == "report":
         ev_ok, ev_errors = _resolve_evidence(path, data, verdict)
         errors += ev_errors
-        errors += semantic_report(data, verdict, evidence_ok=ev_ok)
+        errors += semantic_report(data, verdict, evidence_ok=ev_ok, now=now)
         if release and data.get("report_status") != "正式":
             errors.append("发布检查：report_status=%r，正式发布只收「正式」" % data.get("report_status"))
         if release and data.get("is_example"):
@@ -514,15 +526,17 @@ def validate_file(path: Path, verdict, release: bool = False) -> tuple:
         if release and data.get("tested_depth") in (None, "未测", "作者自测"):
             errors.append("发布检查：tested_depth=%r 不足以上能力榜" % data.get("tested_depth"))
     elif kind == "ledger":
+        # dsh-bench#27 S1：对账按账本月份——只统计 tested_at 落在该月的正式报告
         actual = 0
         rep_dir = path.parent.parent / "reports"
+        month = str(data.get("month") or "")
         if rep_dir.is_dir():
             for p2 in sorted(rep_dir.glob("*.json")):
                 try:
                     d2 = _load_json_strict(p2.read_text(encoding="utf-8"))
                 except (OSError, json.JSONDecodeError, ValueError):
                     continue
-                if d2.get("report_status") == "正式":
+                if d2.get("report_status") == "正式" and month and str(d2.get("tested_at") or "")[:7] == month:
                     actual += 1
         errors += semantic_ledger(data, verdict, actual_published=actual)
     return (not errors), errors
@@ -540,7 +554,17 @@ def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description="dsh-bench 插件测评站 · 发布前检查器")
     ap.add_argument("--data-dir", default=str(ROOT / "data"))
     ap.add_argument("--release", action="store_true", help="正式发布模式：只收「正式」状态、拒示例")
+    ap.add_argument("--as-of", default=None, help="复算时钟（YYYY-MM-DD）；--release 时必须为今天（dsh-bench#26）")
     args = ap.parse_args(argv)
+    if args.as_of is not None:
+        try:
+            datetime.strptime(args.as_of, "%Y-%m-%d")
+        except ValueError:
+            print("--as-of 须为 YYYY-MM-DD，实为 %r" % args.as_of, file=sys.stderr)
+            return 2
+        if args.release and args.as_of != date.today().isoformat():
+            print("--release 的复算时钟必须是今天（--as-of 只用于非发布复算）", file=sys.stderr)
+            return 2
 
     verdict = load_verdict()
     data_dir = Path(args.data_dir)
@@ -566,10 +590,7 @@ def main(argv=None) -> int:
     failed = 0
     for p in files:
         rel = p.relative_to(data_dir) if data_dir in p.parents else p
-        try:
-            ok, errors = validate_file(p, verdict, release=args.release)
-        except Exception as exc:  # dsh-bench#17 H3：单文件崩溃不吞掉整批结论
-            ok, errors = False, ["校验器内部异常：%s: %s" % (type(exc).__name__, exc)]
+        ok, errors = validate_file(p, verdict, release=args.release, now=args.as_of)
         if ok:
             print("PASS  %s" % rel)
         else:

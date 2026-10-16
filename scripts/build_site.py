@@ -25,6 +25,7 @@ import html
 import importlib.util
 import json
 import shutil
+import tempfile
 import re
 import sys
 from datetime import date, datetime
@@ -247,6 +248,10 @@ def check_report(report: dict, evidence_index: dict = None) -> dict:
         security_six_threats=(report.get("security_scope") or {}).get("threats"),
         quick_check=report.get("quick_check"),
         risk_level=report.get("risk_level"),
+        # dsh-bench#27 S2：运行层输入与校验器同源（实验无效/没法测如实过闸）
+        run_valid=report.get("run_status", "有效") != "实验无效",
+        task_not_applicable=(report.get("untestable_reason") or "") == "任务不适用",
+        env_unsupported=(report.get("untestable_reason") or "") == "环境不支持",
     )
     if d.capability_state != report.get("capability_state"):
         raise BuildError(
@@ -298,15 +303,23 @@ _NOW = None  # dsh-bench#8①：构建时钟（--as-of，缺省今天），写�
 
 
 def _ver_key(ref: str):
-    """从 plugin_identity.ref 提取可比较版本键（@x.y.z → (x,y,z)；不可解析退化为 (0,)）。"""
+    """从 plugin_identity.ref 提取可比较版本键（dsh-bench#27 S4b）。
+    去 v 前缀；预发布段（-rcN 等）小于正式版；无法解析时抛 BuildError（fail-closed，不静默平局）。"""
     tail = str(ref).rsplit("@", 1)[-1] if "@" in str(ref) else ""
+    if tail.startswith(("v", "V")):
+        tail = tail[1:]
+    core, _, pre = tail.partition("-")
     parts = []
-    for seg in tail.split("."):
+    for seg in core.split("."):
         if seg.isdigit():
             parts.append(int(seg))
         else:
-            return (0,)
-    return tuple(parts) or (0,)
+            raise BuildError("plugin_identity.ref 版本不可解析：%r（须 x.y.z[-pre]，版本取舍需要可比较的版本号）" % ref)
+    key = tuple(parts) or (0,)
+    # 预发布 < 正式：正式版尾段追加一个大数（INF 效果）
+    if pre:
+        return key + (-1,)
+    return key + (10**9,)
 
 
 def load_data(data_dir: Path, include_examples: bool) -> dict:
@@ -323,7 +336,9 @@ def load_data(data_dir: Path, include_examples: bool) -> dict:
     for r in reports:
         key = (r["plugin_id"], r["domain"])
         ref = (r.get("plugin_identity") or {}).get("ref") or ""
-        k = _ver_key(ref)
+        ver = r.get("report_version")
+        rv = ver if isinstance(ver, int) else 0
+        k = _ver_key(ref) + (rv,)
         if key not in best or k > best[key][0]:
             best[key] = (k, ref, r)
     for r in reports:
@@ -331,10 +346,14 @@ def load_data(data_dir: Path, include_examples: bool) -> dict:
         _, top_ref, top_r = best[key]
         if r is not top_r:
             r["_superseded_by"] = top_ref
-            r.setdefault("_decision").notes.append(
-                "plugin_identity.ref=%r 非该插件同域最高版本（最高 %s）：不进数字排名，历史结论保留。" % (ref_of(r), top_ref)
+            r["_decision"].notes.append(
+                "plugin_identity.ref=%r 非该插件同域最高版本（最高 %s）：不进数字排名、不推荐，历史结论保留。" % (ref_of(r), top_ref)
             )
+            # dsh-bench#27 S4a：旧版本退出排名的同时不再被推荐、不进「值得试」、徽章撤下
             r["_decision"].rank_eligible = False
+            r["_decision"].worth_trying = False
+            r["_decision"].recommendation = "待复核"
+            r["_decision"].badges = []
     examples = []
     if include_examples:
         for p in sorted((data_dir / "examples").glob("report-*.json")):
@@ -476,10 +495,27 @@ def cost_block(report: dict) -> str:
 
 
 def build(out_dir: Path, data: dict) -> list:
-    # dsh-bench#21 M1：构建是全量重建——先清空输出目录，撤下的报告页不再残留
+    # dsh-bench#25 F1：只清「本工具的产物」——危险目标拒绝 + 产物标记核验（#21 M1 的安全化）
+    out_dir = out_dir.resolve()
+    root, data_dir = ROOT.resolve(), DATA_DIR.resolve()
+    protected = [root, data_dir, root / "docs", root / "scripts", root / "site", root / "content"]
+    try:
+        protected.append(Path.home().resolve())
+    except RuntimeError:
+        pass  # 家目录不可知时跳过该保护项（其余保护已覆盖仓库内部）
+    for p_dir in protected:
+        if out_dir == p_dir or p_dir.is_relative_to(out_dir):
+            raise BuildError("拒绝把 %s 当作输出目录：它是仓库/数据/真源本身或其祖先" % out_dir)
+    marker = out_dir / "build-manifest.json"
+    if out_dir.exists() and any(out_dir.iterdir()) and not marker.exists():
+        raise BuildError("%s 非空且不是本工具的产物（缺 build-manifest.json），拒绝清空" % out_dir)
+    # dsh-bench#25 F2：先写临时目录，全部成功后原子替换——中途 BuildError 时旧产物原样保留
+    staging = Path(tempfile.mkdtemp(prefix=".dsh-build-", dir=out_dir.parent))
     if out_dir.exists():
-        shutil.rmtree(out_dir)
-    out_dir.mkdir(parents=True, exist_ok=True)
+        # 静态资源沿用旧产物，避免 staging 缺文件
+        shutil.copytree(out_dir, staging, dirs_exist_ok=True)
+    real_out = out_dir
+    out_dir = staging
     (out_dir / "static").mkdir(exist_ok=True)
     for f in STATIC_DIR.glob("*"):
         (out_dir / "static" / f.name).write_bytes(f.read_bytes())
@@ -798,6 +834,14 @@ def build(out_dir: Path, data: dict) -> list:
     )
     written.append("ledger.html")
 
+    # dsh-bench#25 F2：全部页面成功——原子替换（旧产物只在此时才被移除）
+    (staging / "build-manifest.json").write_text(
+        json.dumps({"as_of": _NOW, "as_of_default": _NOW == date.today().isoformat()}, ensure_ascii=False, indent=1),
+        encoding="utf-8",
+    )
+    if real_out.exists():
+        shutil.rmtree(real_out)
+    staging.rename(real_out)
     return written
 
 
@@ -806,10 +850,21 @@ def main(argv=None) -> int:
     ap.add_argument("--data-dir", default=str(DATA_DIR))
     ap.add_argument("--out", default=str(ROOT / "dist"))
     ap.add_argument("--official-only", action="store_true", help="不包含 data/examples 的演示数据")
-    ap.add_argument("--as-of", default=None, help="复算时钟（YYYY-MM-DD），缺省今天；写入 build-manifest.json（dsh-bench#8①）")
+    ap.add_argument("--as-of", default=None, help="复算时钟（YYYY-MM-DD），缺省今天；--official-only 时必须为今天（dsh-bench#26）")
     args = ap.parse_args(argv)
     global _NOW
-    _NOW = args.as_of or date.today().isoformat()
+    if args.as_of is None:
+        _NOW = date.today().isoformat()
+    else:
+        try:
+            as_of = datetime.strptime(args.as_of, "%Y-%m-%d").date()
+        except ValueError:
+            print("构建中止：--as-of 须为 YYYY-MM-DD，实为 %r" % args.as_of, file=sys.stderr)
+            return 2
+        if args.official_only and as_of != date.today():
+            print("构建中止：正式构建（--official-only）的复算时钟必须是今天；--as-of 只用于本地复算演示（dsh-bench#26）", file=sys.stderr)
+            return 2
+        _NOW = as_of.isoformat()
 
     # 发布闸（dsh-bench#3）：构建前先跑校验器，任一 FAIL 即中止。
     # 口径：语义复核（公式/门槛/证据链/状态/分数/时钟）**任何构建都跑**；
@@ -834,7 +889,11 @@ def main(argv=None) -> int:
     except BuildError as exc:
         print("构建中止（fail-closed）：%s" % exc, file=sys.stderr)
         return 2
-    written = build(Path(args.out), data)
+    try:
+        written = build(Path(args.out), data)
+    except BuildError as exc:
+        print("构建中止（fail-closed）：%s" % exc, file=sys.stderr)
+        return 2
     # dsh-bench#8①：构建时钟入 manifest——产物里记录用的是哪一天
     (Path(args.out) / "build-manifest.json").write_text(
         json.dumps({"as_of": _NOW, "as_of_default": args.as_of is None}, ensure_ascii=False, indent=1),

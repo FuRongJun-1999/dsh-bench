@@ -18,6 +18,7 @@ from __future__ import annotations
 import copy
 import importlib.util
 import json
+import shutil
 import sys
 import tempfile
 from pathlib import Path
@@ -595,6 +596,137 @@ def t86():
     r["human_text"]["结论"] = "❌ 帮倒忙：越用越糟。"
     ok, errors = write_and_validate(r)
     check(not ok and any("与复算状态" in e for e in errors), "人话结论与复算不符须被拒：%s" % errors_text(errors))
+
+
+# --------------------------------------------------------------- 第三批（#25/#26/#27）
+
+
+@run_case("t87_out_dir_dangerous_targets_refused")
+def t87():
+    """dsh-bench#25 F1：--out 指向仓库/数据/真源本身或其祖先 → BuildError，不删任何文件。"""
+    tmp = Path(tempfile.mkdtemp(prefix="lpb_out_"))
+    repo = tmp / "repo"
+    shutil.copytree(ROOT, repo, ignore=shutil.ignore_patterns(".git", "__pycache__", "dist"))
+    for target in (repo, repo / "data", repo / "docs", repo / "scripts"):
+        before = sum(1 for _ in target.rglob("*"))
+        try:
+            BS.build(target, BS.load_data(repo / "data", include_examples=False))
+            raise AssertionError("--out %s 必须被拒" % target)
+        except BS.BuildError as exc:
+            check("拒绝" in str(exc), "中止理由须点名拒绝：%s" % exc)
+        after = sum(1 for _ in target.rglob("*"))
+        check(before == after, "--out %s 文件数不得变化：%d → %d" % (target, before, after))
+
+
+@run_case("t88_out_dir_non_product_refused")
+def t88():
+    """dsh-bench#25 F1：非空且缺 build-manifest.json 的目录拒绝清空。"""
+    out = Path(tempfile.mkdtemp(prefix="lpb_out2_")) / "somewhere"
+    out.mkdir()
+    (out / "precious.txt").write_text("keep me", encoding="utf-8")
+    try:
+        BS.build(out, BS.load_data(ROOT / "data", include_examples=False))
+        raise AssertionError("非产物目录必须被拒")
+    except BS.BuildError as exc:
+        check("build-manifest" in str(exc), "须点名产物标记：%s" % exc)
+    check((out / "precious.txt").read_text(encoding="utf-8") == "keep me", "原有文件保留")
+
+
+@run_case("t90_as_of_official_rewind_refused")
+def t90():
+    """dsh-bench#26 F1：--official-only --as-of <过去> → rc=2。"""
+    import subprocess, sys as _sys
+    p = subprocess.run([_sys.executable, "-X", "utf8", "scripts/build_site.py", "--official-only",
+                        "--as-of", "2026-04-01", "--out", str(Path(tempfile.mkdtemp(prefix="lpb_asof_")))],
+                       cwd=str(ROOT), capture_output=True, text=True, encoding="utf-8")
+    check(p.returncode == 2, "正式构建回拨时钟须 rc=2，实得 %s" % p.returncode)
+    check("复算时钟必须是今天" in (p.stderr or ""), "须点名正式构建时钟限制：%s" % (p.stderr or "")[:200])
+
+
+@run_case("t91_as_of_bad_format_refused")
+def t91():
+    import subprocess, sys as _sys
+    p = subprocess.run([_sys.executable, "-X", "utf8", "scripts/build_site.py",
+                        "--as-of", "2026-13-45", "--out", str(Path(tempfile.mkdtemp(prefix="lpb_asof2_")))],
+                       cwd=str(ROOT), capture_output=True, text=True, encoding="utf-8")
+    check(p.returncode == 2, "非法 --as-of 须 rc=2（无 Traceback）")
+
+
+@run_case("t92_ledger_reconciliation_by_month")
+def t92():
+    """dsh-bench#27 S1：对账只统计 tested_at 在账本月份内的正式报告。"""
+    verdict = VD.load_verdict()
+    led = json.loads((ROOT / "data/ledger/ledger-2026-10.json").read_text(encoding="utf-8"))
+    tmp = Path(tempfile.mkdtemp(prefix="lpb_led_"))
+    rep = tmp / "reports"; rep.mkdir()
+    ev = tmp / "evidence"; ev.mkdir()
+    (ev / "evidence-example-001.json").write_text((ROOT / "data/evidence/evidence-example-001.json").read_text(encoding="utf-8"), encoding="utf-8")
+    sep = dict(led, month="2026-09", published_reports=1, ledger_id="ledger-2026-09")
+    ld = tmp / "ledger"; ld.mkdir()
+    (ld / "ledger-2026-09.json").write_text(json.dumps(sep, ensure_ascii=False), encoding="utf-8")
+    r9 = base_report()
+    r9["report_id"] = "rep-sep"; r9["tested_at"] = "2026-09-20"; r9["expires_at"] = "2026-12-19"
+    r9["report_status"] = "正式"
+    (rep / "report-sep.json").write_text(json.dumps(r9, ensure_ascii=False), encoding="utf-8")
+    ok2, errors2 = VD.validate_file(ld / "ledger-2026-09.json", verdict)
+    check(ok2, "9 月账本与 9 月正式报告对账须通过：%s" % errors_text(errors2))
+    (ld / "ledger-2026-09.json").write_text(json.dumps(dict(sep, published_reports=2), ensure_ascii=False), encoding="utf-8")
+    ok3, errors3 = VD.validate_file(ld / "ledger-2026-09.json", verdict)
+    check(not ok3 and any("账本不对账" in e for e in errors3), "多写发布数须对账失败：%s" % errors_text(errors3))
+
+
+@run_case("t93_generator_passes_run_layer_inputs")
+def t93():
+    """dsh-bench#27 S2：实验无效/没法测报告 --release PASS 且 --official-only 构建 rc=0。"""
+    tmp = Path(tempfile.mkdtemp(prefix="lpb_s2_"))
+    for sub in ("reports", "plugins", "evidence", "ledger", "examples"):
+        (tmp / sub).mkdir(parents=True)
+    shutil.copy(ROOT / "data/plugins/plugin-example-memory.json", tmp / "plugins")
+    for f in (ROOT / "data/evidence").glob("*.json"):
+        shutil.copy(f, tmp / "evidence")
+    led = json.loads((ROOT / "data/ledger/ledger-2026-10.json").read_text(encoding="utf-8"))
+    led["published_reports"] = 0
+    (tmp / "ledger" / "ledger-2026-10.json").write_text(json.dumps(led, ensure_ascii=False), encoding="utf-8")
+    base = base_report()
+    base["report_status"] = "正式"; base.pop("is_example", None)
+    inv = dict(base, report_id="rep-inv", run_status="实验无效", capability_state="实验无效/待重跑")
+    unt = dict(base, report_id="rep-unt", untestable_reason="环境不支持", capability_state="没法测",
+               install_status="安装成功", human_text=dict(base.get("human_text") or {}, 结论="没法测（环境不支持）。"))
+    for r in (inv, unt):
+        r["interval"] = None; r["half_width"] = None; r["precision_ok"] = False
+        r["b0_score"] = r["p_score"] = r["delta"] = None
+        r["expires_at"] = "2026-12-30"
+        (tmp / "reports" / ("report-%s.json" % r["report_id"])).write_text(json.dumps(r, ensure_ascii=False), encoding="utf-8")
+    ok, errors = VD.validate_file(tmp / "reports" / "report-rep-inv.json", VD.load_verdict(), release=True)
+    check(ok, "实验无效报告 --release 须通过：%s" % errors_text(errors))
+    ok2, errors2 = VD.validate_file(tmp / "reports" / "report-rep-unt.json", VD.load_verdict(), release=True)
+    check(ok2, "环境不支持报告 --release 须通过：%s" % errors_text(errors2))
+    data = BS.load_data(tmp, include_examples=False)
+    out = Path(tempfile.mkdtemp(prefix="lpb_s2out_"))
+    BS.build(out, data)
+    inv_page = next(p for p in out.glob("report-*.html") if "inv" in p.name)
+    check("实验无效/待重跑" in inv_page.read_text(encoding="utf-8"), "报告页须显示实验无效状态")
+
+
+@run_case("t94_g1_experimental_invalid_security_channel")
+def t94():
+    """dsh-bench#27 S3：实验无效路径同样走安全通道。"""
+    vlt = VD.load_verdict()
+    d = vlt.decide((6, 10), run_valid=False, confirmed_severe_security_event=True)
+    check(d.capability_state == vlt.STATUS_INVALID_RUN, "能力结果保留实验无效")
+    check(d.recommendation == "暂停推荐", "已确认事件须暂停推荐，实得 %s" % d.recommendation)
+    d2 = vlt.decide((6, 10), run_valid=False, security_investigation=True)
+    check(d2.recommendation == "调查中", "调查中同理")
+
+
+@run_case("t95_superseded_not_recommended_and_ver_key_robust")
+def t95():
+    """dsh-bench#27 S4：v 前缀可解析；同 ref 看 report_version。"""
+    k1 = BS._ver_key("x@v1.0.0"); k2 = BS._ver_key("x@v2.0.0")
+    check(k2 > k1, "v 前缀版本须可比较：%r vs %r" % (k1, k2))
+    k3 = BS._ver_key("x@0.0.0-example") + (1,)
+    k4 = BS._ver_key("x@0.0.0-example") + (2,)
+    check(k4 > k3, "同 ref 时 report_version 高者胜")
 
 MUTATIONS = [
     {"id": "W51", "target": "scripts/validate_data.py", "test_file": "tests/test_validate_data.py",

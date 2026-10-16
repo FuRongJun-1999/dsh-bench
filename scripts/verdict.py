@@ -414,6 +414,15 @@ def decide(
     risk = risk_level or RISK_UNASSESSED
     scope = security_scope(depth, security_six_threats)
 
+    # 安全独立通道在**所有**提前返回路径生效（dsh-bench#16 G1 / #27 S3）：含实验无效分支
+    early_rec, early_extra = "待复核", []
+    if confirmed_severe_security_event:
+        early_rec = "暂停推荐"
+        early_extra = ["已确认严重安全事件：暂停当前版本推荐；能力结果保留，不改零分、不抹掉。"]
+    elif security_investigation:
+        early_rec = "调查中"
+        early_extra = ["可疑但证据不足：标「调查中」。"]
+
     # --- 1. 实验无效（运行层）：作废重跑，不出能力五状态 ---------------
     # 与档位无关：任何档位的实验本身坏了，都不给插件记失败。
     if not run_valid:
@@ -423,13 +432,13 @@ def decide(
             capability_delta_concluded=False,
             install_status=install_status,
             rank_eligible=False,
-            recommendation="待复核",
+            recommendation=early_rec,
             worth_trying=False,
             cards=cards,
             tool_four_things=four_things,
             security_scope=scope,
             risk_level=risk,
-            notes=["实验无效是运行层状态（判分器故障/环境崩）：作废 + 留痕 + 重跑，不给插件记失败。"],
+            notes=["实验无效是运行层状态（判分器故障/环境崩）：作废 + 留痕 + 重跑，不给插件记失败。"] + early_extra,
             reasons=["运行层判为实验无效，不输出能力五状态。"],
         )
 
@@ -444,15 +453,6 @@ def decide(
         untestable_reasons.append("任务不适用")
     if env_unsupported:
         untestable_reasons.append("环境不支持")
-    # 安全独立通道在提前返回路径同样生效（dsh-bench#16 G1）：能力结果保留，推荐按安全状态走
-    early_rec, early_extra = "待复核", []
-    if confirmed_severe_security_event:
-        early_rec = "暂停推荐"
-        early_extra = ["已确认严重安全事件：暂停当前版本推荐；能力结果保留，不改零分、不抹掉。"]
-    elif security_investigation:
-        early_rec = "调查中"
-        early_extra = ["可疑但证据不足：标「调查中」。"]
-
     if untestable_reasons:
         notes.append("能力结论：🚧 没法测（原因：" + "；".join(untestable_reasons) + "）")
         if install_failed:
