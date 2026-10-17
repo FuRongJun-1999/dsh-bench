@@ -63,6 +63,8 @@ python -X utf8 tests/mutate_selfcheck.py
 python -X utf8 scripts/public_check.py
 ```
 
+> **Windows 受限环境提示**：Python 的 `tempfile.mkdtemp()` 以 `0o700` 建目录，在 Windows 低权限沙箱（授权经可继承 ACL 传递）下该目录不会继承 ACE，测试可能报 `PermissionError: [WinError 5]`。这是环境问题而非本仓缺陷（GitHub Actions/Linux 不受影响）；如遇此情况，可将 `os.mkdir` 的 0o700 重映射为继承模式（0o770）后运行测试。
+
 生成后的站点在 `dist/`，直接双击 `dist/index.html` 即可离线浏览（纯静态，无外链、无脚本）。
 
 ---
